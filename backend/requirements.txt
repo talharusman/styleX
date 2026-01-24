@@ -25,6 +25,7 @@ torchvision>=0.15.0
 # Database
 sqlalchemy>=2.0.0
 asyncpg>=0.28.0
+aiosqlite>=0.19.0
 
 # HTTP Client
 httpx>=0.24.0
@@ -35,6 +36,9 @@ groq>=0.4.0
 # Google OAuth (for Calendar)
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
+
+# JWT Authentication
+python-jose[cryptography]>=3.3.0
 
 # Data Validation
 pydantic>=2.0.0
