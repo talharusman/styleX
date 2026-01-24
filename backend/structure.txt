@@ -1,0 +1,110 @@
+.
+├── app
+│   ├── cloth_analysis
+│   │   ├── extractors
+│   │   │   ├── category_extractor.py
+│   │   │   ├── color_extractor.py
+│   │   │   ├── confidence_scorer.py
+│   │   │   ├── design_extractor.py
+│   │   │   ├── fabric_extractor.py
+│   │   │   ├── formality_extractor.py
+│   │   │   ├── gender_extractor.py
+│   │   │   ├── __init__.py
+│   │   │   ├── style_extractor.py
+│   │   │   └── weather_extractor.py
+│   │   ├── __init__.py
+│   │   ├── router.py
+│   │   ├── schemas.py
+│   │   ├── service.py
+│   │   └── utils.py
+│   ├── common
+│   │   ├── color_utils.py
+│   │   ├── constants.py
+│   │   ├── exceptions.py
+│   │   ├── image_utils.py
+│   │   └── __init__.py
+│   ├── config.py
+│   ├── database
+│   │   ├── connection.py
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   └── repositories
+│   │       ├── clothing_repo.py
+│   │       ├── __init__.py
+│   │       └── user_repo.py
+│   ├── face_analysis
+│   │   ├── __init__.py
+│   │   ├── models
+│   │   │   ├── color_analysis.py
+│   │   │   ├── face_mesh.py
+│   │   │   ├── __init__.py
+│   │   │   └── undertone_detection.py
+│   │   ├── router.py
+│   │   ├── schemas.py
+│   │   ├── service.py
+│   │   └── utils.py
+│   ├── __init__.py
+│   ├── main.py
+│   ├── recommendation
+│   │   ├── engine
+│   │   │   ├── color_matcher.py
+│   │   │   ├── __init__.py
+│   │   │   ├── scoring.py
+│   │   │   └── style_matcher.py
+│   │   ├── __init__.py
+│   │   ├── router.py
+│   │   ├── rules
+│   │   │   ├── color_rules.py
+│   │   │   ├── __init__.py
+│   │   │   └── seasonal_rules.py
+│   │   ├── schemas.py
+│   │   ├── service.py
+│   │   └── utils.py
+│   └── virtual_tryon
+│       ├── __init__.py
+│       ├── models
+│       │   ├── garment_warping.py
+│       │   ├── image_synthesis.py
+│       │   ├── __init__.py
+│       │   └── pose_estimation.py
+│       ├── router.py
+│       ├── schemas.py
+│       ├── service.py
+│       └── utils.py
+├── data
+│   ├── clothing_dataset
+│   │   └── .gitkeep
+│   └── sample_images
+│       └── .gitkeep
+├── .env.example
+├── .gitignore
+├── models
+│   ├── .gitkeep
+│   └── __init__.py
+├── README.md
+├── requirements.txt
+├── scripts
+│   ├── download_models.py
+│   └── setup.py
+├── structure.txt
+├── tests
+│   ├── conftest.py
+│   ├── __init__.py
+│   ├── test_cloth_analysis
+│   │   ├── __init__.py
+│   │   └── test_extractors.py
+│   ├── test_face_analysis
+│   │   ├── __init__.py
+│   │   ├── test_color_analysis.py
+│   │   ├── test_face_mesh.py
+│   │   └── test_undertone.py
+│   ├── test_recommendation
+│   │   ├── __init__.py
+│   │   └── test_matching.py
+│   └── test_virtual_tryon
+│       ├── __init__.py
+│       └── test_tryon.py
+└── .vscode
+    └── settings.json
+
+24 directories, 83 files

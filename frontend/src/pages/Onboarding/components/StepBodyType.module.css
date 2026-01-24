@@ -1,0 +1,87 @@
+/* Step Body Type Styles */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.header {
+  text-align: center;
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Options Grid */
+.optionsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  background-color: var(--color-bg-card);
+  border: 2px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-default);
+  text-align: center;
+}
+
+.option:hover {
+  border-color: var(--color-border-medium);
+  background-color: var(--color-bg-secondary);
+}
+
+.option.selected {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-secondary);
+}
+
+.optionIcon {
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-2);
+}
+
+.optionLabel {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.optionDescription {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}

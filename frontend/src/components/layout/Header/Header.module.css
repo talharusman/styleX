@@ -1,0 +1,113 @@
+/* Header Component Styles */
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  z-index: var(--z-sticky);
+  transition: all var(--duration-normal) var(--ease-default);
+}
+
+/* Variants */
+.default {
+  background-color: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.transparent {
+  background-color: transparent;
+}
+
+.transparent.scrolled {
+  background-color: rgba(250, 250, 248, 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dark {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+/* Container */
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  max-width: var(--container-xl);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.logoText {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-medium);
+  font-style: italic;
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.dark .logoText {
+  color: var(--color-text-inverse);
+}
+
+/* Navigation */
+.nav {
+  display: none;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  .nav {
+    display: flex;
+  }
+}
+
+.navLink {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-default);
+  position: relative;
+}
+
+.navLink:hover {
+  color: var(--color-text-primary);
+}
+
+.navLink::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--color-primary);
+  transform: scaleX(0);
+  transition: transform var(--duration-fast) var(--ease-default);
+}
+
+.navLink:hover::after,
+.navLink.active::after {
+  transform: scaleX(1);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

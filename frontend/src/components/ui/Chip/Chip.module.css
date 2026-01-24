@@ -1,0 +1,125 @@
+/* Chip Component Styles */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-body);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-full);
+  transition: all var(--duration-fast) var(--ease-default);
+  user-select: none;
+}
+
+/* Variants */
+.default {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+}
+
+.default.selected {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-primary);
+}
+
+.outline {
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border: 1.5px solid var(--color-border-medium);
+}
+
+.outline.selected {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-primary);
+}
+
+.filled {
+  background-color: var(--color-secondary);
+  color: var(--color-text-primary);
+  border: none;
+}
+
+.filled.selected {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.accent {
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  border: none;
+}
+
+/* Sizes */
+.sm {
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.md {
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.lg {
+  height: 44px;
+  padding: 0 var(--space-5);
+  font-size: var(--text-base);
+}
+
+/* Clickable */
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  border-color: var(--color-primary);
+}
+
+/* Icon */
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+/* Label */
+.label {
+  white-space: nowrap;
+}
+
+/* Remove button */
+.removeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--space-1);
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+.removeButton:hover {
+  opacity: 1;
+}
+
+/* Chip Group */
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

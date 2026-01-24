@@ -1,0 +1,43 @@
+/* Step Indicator Styles */
+
+.indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-border-medium);
+  transition: all var(--duration-normal) var(--ease-default);
+}
+
+.line {
+  width: 32px;
+  height: 2px;
+  background-color: var(--color-border-light);
+  margin: 0 var(--space-2);
+  transition: background-color var(--duration-normal) var(--ease-default);
+}
+
+/* Active state */
+.active .dot {
+  background-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(14, 14, 14, 0.1);
+}
+
+/* Completed state */
+.completed .dot {
+  background-color: var(--color-accent);
+}
+
+.completed .line {
+  background-color: var(--color-accent);
+}
