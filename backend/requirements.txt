@@ -1,0 +1,32 @@
+# Python Dependencies
+# TODO: Add required packages
+
+# Web Framework
+# fastapi
+# uvicorn
+
+# Image Processing
+# opencv-python
+# Pillow
+# numpy
+
+# Face Analysis
+# mediapipe
+
+# Color Analysis
+# scikit-image
+# colormath
+
+# Machine Learning
+# torch
+# torchvision
+# tensorflow
+
+# Database
+# sqlalchemy
+# asyncpg
+
+# Testing
+# pytest
+# pytest-asyncio
+# httpx
