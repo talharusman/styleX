@@ -1,5 +1,5 @@
 """
-Settings Service - Handles user settings management
+Settings Service - Handles user settings management with MongoDB backend
 """
 
 import logging
@@ -24,12 +24,20 @@ from .schemas import (
     ThemeMode,
     LanguageCode
 )
+from app.database import (
+    user_repository,
+    get_user_repository,
+    UserSettings as DbUserSettings,
+    NotificationSettings as DbNotificationSettings,
+    PrivacySettings as DbPrivacySettings,
+    AppearanceSettings as DbAppearanceSettings,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class SettingsService:
-    """Service for managing user settings"""
+    """Service for managing user settings with MongoDB"""
     
     # Default help categories
     HELP_CATEGORIES = [
@@ -73,67 +81,61 @@ class SettingsService:
     
     def __init__(self):
         """Initialize settings service"""
-        # In-memory storage (use DB in production)
-        self._settings: Dict[str, Dict[str, Any]] = {}
+        self._repo = get_user_repository()
     
-    def _get_user_settings(self, user_id: str) -> Dict[str, Any]:
-        """Get or create settings dict for user"""
-        if user_id not in self._settings:
-            self._settings[user_id] = {
-                "account": None,
-                "notifications": None,
-                "privacy": None,
-                "appearance": None,
-                "calendar": None,
-                "ai": None
-            }
-        return self._settings[user_id]
+    async def _get_db_settings(self, user_id: str) -> Optional[DbUserSettings]:
+        """Get settings from database"""
+        return await self._repo.get_user_settings(user_id)
     
     # ============== Account Settings ==============
     
     async def get_account_settings(self, user_id: str, email: str = "user@example.com") -> AccountSettings:
         """Get account settings"""
-        settings = self._get_user_settings(user_id)
+        user = await self._repo.get_user_by_id(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["account"]:
-            settings["account"] = AccountSettings(
-                user_id=user_id,
-                email=email
-            )
-        
-        return settings["account"]
+        return AccountSettings(
+            user_id=user_id,
+            email=user.email if user else email,
+            email_verified=user.email_verified if user else False,
+            two_factor_enabled=db_settings.two_factor_enabled if db_settings else False
+        )
     
     async def update_email(self, user_id: str, new_email: str) -> bool:
         """Update user email"""
-        settings = self._get_user_settings(user_id)
-        if settings["account"]:
-            settings["account"].email = new_email
-            settings["account"].email_verified = False
-            return True
-        return False
+        result = await self._repo.update_user(user_id, email=new_email, email_verified=False)
+        return result is not None
     
-    async def enable_two_factor(self, user_id: str) -> Dict[str, str]:
+    async def enable_two_factor(self, user_id: str) -> Dict[str, Any]:
         """Enable two-factor authentication"""
-        settings = self._get_user_settings(user_id)
-        if settings["account"]:
-            settings["account"].two_factor_enabled = True
+        result = await self._repo.update_user_settings(user_id, two_factor_enabled=True)
+        if result:
             return {
                 "success": True,
                 "message": "Two-factor authentication enabled",
                 "secret": "DEMO_SECRET_KEY"  # Would be real TOTP secret
             }
-        return {"success": False, "message": "Account not found"}
+        return {"success": False, "message": "Settings not found"}
     
     # ============== Notification Settings ==============
     
     async def get_notification_settings(self, user_id: str) -> NotificationSettings:
         """Get notification settings"""
-        settings = self._get_user_settings(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["notifications"]:
-            settings["notifications"] = NotificationSettings(user_id=user_id)
+        if db_settings and db_settings.notifications:
+            return NotificationSettings(
+                user_id=user_id,
+                email_notifications=db_settings.notifications.email_enabled,
+                push_notifications=db_settings.notifications.push_enabled,
+                outfit_suggestions=db_settings.notifications.outfit_suggestions,
+                weather_alerts=db_settings.notifications.weather_alerts,
+                event_reminders=db_settings.notifications.event_reminders,
+                weekly_digest=db_settings.notifications.weekly_digest,
+                marketing_emails=db_settings.notifications.marketing
+            )
         
-        return settings["notifications"]
+        return NotificationSettings(user_id=user_id)
     
     async def update_notification_settings(
         self,
@@ -141,26 +143,47 @@ class SettingsService:
         update_data: NotificationSettingsUpdate
     ) -> NotificationSettings:
         """Update notification settings"""
-        current = await self.get_notification_settings(user_id)
-        
         update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
-        for field, value in update_dict.items():
-            if hasattr(current, field):
-                setattr(current, field, value)
         
-        self._settings[user_id]["notifications"] = current
-        return current
+        # Map to database model field names
+        db_updates = {}
+        if 'email_notifications' in update_dict:
+            db_updates['notifications.email_enabled'] = update_dict['email_notifications']
+        if 'push_notifications' in update_dict:
+            db_updates['notifications.push_enabled'] = update_dict['push_notifications']
+        if 'outfit_suggestions' in update_dict:
+            db_updates['notifications.outfit_suggestions'] = update_dict['outfit_suggestions']
+        if 'weather_alerts' in update_dict:
+            db_updates['notifications.weather_alerts'] = update_dict['weather_alerts']
+        if 'event_reminders' in update_dict:
+            db_updates['notifications.event_reminders'] = update_dict['event_reminders']
+        if 'weekly_digest' in update_dict:
+            db_updates['notifications.weekly_digest'] = update_dict['weekly_digest']
+        if 'marketing_emails' in update_dict:
+            db_updates['notifications.marketing'] = update_dict['marketing_emails']
+        
+        if db_updates:
+            await self._repo.update_user_settings(user_id, **db_updates)
+        
+        return await self.get_notification_settings(user_id)
     
     # ============== Privacy Settings ==============
     
     async def get_privacy_settings(self, user_id: str) -> PrivacySettings:
         """Get privacy settings"""
-        settings = self._get_user_settings(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["privacy"]:
-            settings["privacy"] = PrivacySettings(user_id=user_id)
+        if db_settings and db_settings.privacy:
+            return PrivacySettings(
+                user_id=user_id,
+                profile_visibility=db_settings.privacy.profile_visibility,
+                show_wardrobe=db_settings.privacy.show_wardrobe,
+                show_style_profile=db_settings.privacy.show_style_profile,
+                allow_analytics=db_settings.privacy.analytics_enabled,
+                allow_personalization=db_settings.privacy.personalization_enabled
+            )
         
-        return settings["privacy"]
+        return PrivacySettings(user_id=user_id)
     
     async def update_privacy_settings(
         self,
@@ -168,26 +191,42 @@ class SettingsService:
         update_data: PrivacySettingsUpdate
     ) -> PrivacySettings:
         """Update privacy settings"""
-        current = await self.get_privacy_settings(user_id)
-        
         update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
-        for field, value in update_dict.items():
-            if hasattr(current, field):
-                setattr(current, field, value)
         
-        self._settings[user_id]["privacy"] = current
-        return current
+        # Map to database model field names
+        db_updates = {}
+        if 'profile_visibility' in update_dict:
+            db_updates['privacy.profile_visibility'] = update_dict['profile_visibility']
+        if 'show_wardrobe' in update_dict:
+            db_updates['privacy.show_wardrobe'] = update_dict['show_wardrobe']
+        if 'show_style_profile' in update_dict:
+            db_updates['privacy.show_style_profile'] = update_dict['show_style_profile']
+        if 'allow_analytics' in update_dict:
+            db_updates['privacy.analytics_enabled'] = update_dict['allow_analytics']
+        if 'allow_personalization' in update_dict:
+            db_updates['privacy.personalization_enabled'] = update_dict['allow_personalization']
+        
+        if db_updates:
+            await self._repo.update_user_settings(user_id, **db_updates)
+        
+        return await self.get_privacy_settings(user_id)
     
     # ============== Appearance Settings ==============
     
     async def get_appearance_settings(self, user_id: str) -> AppearanceSettings:
         """Get appearance settings"""
-        settings = self._get_user_settings(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["appearance"]:
-            settings["appearance"] = AppearanceSettings(user_id=user_id)
+        if db_settings and db_settings.appearance:
+            return AppearanceSettings(
+                user_id=user_id,
+                theme=ThemeMode(db_settings.appearance.theme) if db_settings.appearance.theme else ThemeMode.SYSTEM,
+                language=LanguageCode(db_settings.appearance.language) if db_settings.appearance.language else LanguageCode.EN,
+                compact_view=db_settings.appearance.compact_view,
+                show_outfit_scores=db_settings.appearance.show_outfit_scores
+            )
         
-        return settings["appearance"]
+        return AppearanceSettings(user_id=user_id)
     
     async def update_appearance_settings(
         self,
@@ -195,26 +234,40 @@ class SettingsService:
         update_data: AppearanceSettingsUpdate
     ) -> AppearanceSettings:
         """Update appearance settings"""
-        current = await self.get_appearance_settings(user_id)
-        
         update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
-        for field, value in update_dict.items():
-            if hasattr(current, field):
-                setattr(current, field, value)
         
-        self._settings[user_id]["appearance"] = current
-        return current
+        db_updates = {}
+        if 'theme' in update_dict:
+            db_updates['appearance.theme'] = update_dict['theme']
+        if 'language' in update_dict:
+            db_updates['appearance.language'] = update_dict['language']
+        if 'compact_view' in update_dict:
+            db_updates['appearance.compact_view'] = update_dict['compact_view']
+        if 'show_outfit_scores' in update_dict:
+            db_updates['appearance.show_outfit_scores'] = update_dict['show_outfit_scores']
+        
+        if db_updates:
+            await self._repo.update_user_settings(user_id, **db_updates)
+        
+        return await self.get_appearance_settings(user_id)
     
     # ============== Calendar Settings ==============
     
     async def get_calendar_settings(self, user_id: str) -> CalendarSettings:
         """Get calendar settings"""
-        settings = self._get_user_settings(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["calendar"]:
-            settings["calendar"] = CalendarSettings(user_id=user_id)
+        if db_settings:
+            return CalendarSettings(
+                user_id=user_id,
+                google_connected=db_settings.google_calendar_connected,
+                google_email=db_settings.google_calendar_email,
+                calendars_synced=db_settings.synced_calendars or [],
+                default_outfit_lead_time=db_settings.outfit_lead_time_hours or 24,
+                auto_suggest_outfits=db_settings.auto_suggest_outfits
+            )
         
-        return settings["calendar"]
+        return CalendarSettings(user_id=user_id)
     
     async def update_calendar_settings(
         self,
@@ -222,43 +275,56 @@ class SettingsService:
         update_data: CalendarSettingsUpdate
     ) -> CalendarSettings:
         """Update calendar settings"""
-        current = await self.get_calendar_settings(user_id)
-        
         update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
-        for field, value in update_dict.items():
-            if hasattr(current, field):
-                setattr(current, field, value)
         
-        self._settings[user_id]["calendar"] = current
-        return current
+        db_updates = {}
+        if 'calendars_synced' in update_dict:
+            db_updates['synced_calendars'] = update_dict['calendars_synced']
+        if 'default_outfit_lead_time' in update_dict:
+            db_updates['outfit_lead_time_hours'] = update_dict['default_outfit_lead_time']
+        if 'auto_suggest_outfits' in update_dict:
+            db_updates['auto_suggest_outfits'] = update_dict['auto_suggest_outfits']
+        
+        if db_updates:
+            await self._repo.update_user_settings(user_id, **db_updates)
+        
+        return await self.get_calendar_settings(user_id)
     
     async def connect_google_calendar(self, user_id: str, email: str) -> CalendarSettings:
         """Mark Google Calendar as connected"""
-        settings = await self.get_calendar_settings(user_id)
-        settings.google_connected = True
-        settings.google_email = email
-        self._settings[user_id]["calendar"] = settings
-        return settings
+        await self._repo.update_user_settings(
+            user_id,
+            google_calendar_connected=True,
+            google_calendar_email=email
+        )
+        return await self.get_calendar_settings(user_id)
     
     async def disconnect_google_calendar(self, user_id: str) -> CalendarSettings:
         """Disconnect Google Calendar"""
-        settings = await self.get_calendar_settings(user_id)
-        settings.google_connected = False
-        settings.google_email = None
-        settings.calendars_synced = []
-        self._settings[user_id]["calendar"] = settings
-        return settings
+        await self._repo.update_user_settings(
+            user_id,
+            google_calendar_connected=False,
+            google_calendar_email=None,
+            synced_calendars=[]
+        )
+        return await self.get_calendar_settings(user_id)
     
     # ============== AI Settings ==============
     
     async def get_ai_settings(self, user_id: str) -> AISettings:
         """Get AI settings"""
-        settings = self._get_user_settings(user_id)
+        db_settings = await self._get_db_settings(user_id)
         
-        if not settings["ai"]:
-            settings["ai"] = AISettings(user_id=user_id)
+        if db_settings:
+            return AISettings(
+                user_id=user_id,
+                personality=db_settings.ai_personality or "friendly",
+                verbosity=db_settings.ai_verbosity or "balanced",
+                auto_suggestions=db_settings.auto_suggest_outfits,
+                learn_from_feedback=True  # Default value
+            )
         
-        return settings["ai"]
+        return AISettings(user_id=user_id)
     
     async def update_ai_settings(
         self,
@@ -266,15 +332,20 @@ class SettingsService:
         update_data: AISettingsUpdate
     ) -> AISettings:
         """Update AI settings"""
-        current = await self.get_ai_settings(user_id)
-        
         update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
-        for field, value in update_dict.items():
-            if hasattr(current, field):
-                setattr(current, field, value)
         
-        self._settings[user_id]["ai"] = current
-        return current
+        db_updates = {}
+        if 'personality' in update_dict:
+            db_updates['ai_personality'] = update_dict['personality']
+        if 'verbosity' in update_dict:
+            db_updates['ai_verbosity'] = update_dict['verbosity']
+        if 'auto_suggestions' in update_dict:
+            db_updates['auto_suggest_outfits'] = update_dict['auto_suggestions']
+        
+        if db_updates:
+            await self._repo.update_user_settings(user_id, **db_updates)
+        
+        return await self.get_ai_settings(user_id)
     
     # ============== All Settings ==============
     
@@ -292,11 +363,26 @@ class SettingsService:
     
     async def reset_settings(self, user_id: str, category: Optional[str] = None) -> bool:
         """Reset settings to defaults"""
-        if user_id in self._settings:
-            if category and category in self._settings[user_id]:
-                self._settings[user_id][category] = None
-            else:
-                del self._settings[user_id]
+        from beanie import PydanticObjectId
+        
+        if category:
+            # Reset specific category
+            reset_updates = {}
+            if category == 'notifications':
+                reset_updates['notifications'] = DbNotificationSettings()
+            elif category == 'privacy':
+                reset_updates['privacy'] = DbPrivacySettings()
+            elif category == 'appearance':
+                reset_updates['appearance'] = DbAppearanceSettings()
+            
+            if reset_updates:
+                await self._repo.update_user_settings(user_id, **reset_updates)
+        else:
+            # Reset all settings - delete and recreate
+            user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+            await DbUserSettings.find(DbUserSettings.user_id == user_id_obj).delete()
+            await self._repo.create_user_settings(user_id_obj)
+        
         return True
     
     # ============== Help & Support ==============
@@ -346,11 +432,29 @@ class SettingsService:
         feature: Optional[str] = None
     ) -> Dict[str, Any]:
         """Submit user feedback"""
-        # Would save to database in production
+        # Store feedback in database
+        from app.database import ChatMessage
+        from beanie import PydanticObjectId
+        
+        user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+        
+        # Store as a system message/feedback entry
+        feedback_msg = ChatMessage(
+            user_id=user_id_obj,
+            role="system",
+            content=f"Feedback (rating: {rating}): {feedback or 'No comment'}",
+            metadata={
+                "type": "feedback",
+                "rating": rating,
+                "feature": feature
+            }
+        )
+        await feedback_msg.insert()
+        
         return {
             "success": True,
             "message": "Thank you for your feedback!",
-            "feedback_id": f"fb_{user_id}_{datetime.utcnow().timestamp()}"
+            "feedback_id": str(feedback_msg.id)
         }
     
     async def submit_support_request(
@@ -361,8 +465,26 @@ class SettingsService:
         category: str = "general"
     ) -> Dict[str, Any]:
         """Submit support request"""
-        # Would create support ticket in production
-        ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-001"
+        from app.database import ChatMessage
+        from beanie import PydanticObjectId
+        
+        user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+        
+        ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(user_id_obj)[-4:]}"
+        
+        # Store support request
+        support_msg = ChatMessage(
+            user_id=user_id_obj,
+            role="system",
+            content=f"Support Request ({category}): {subject}\n\n{message}",
+            metadata={
+                "type": "support_request",
+                "ticket_id": ticket_id,
+                "category": category,
+                "subject": subject
+            }
+        )
+        await support_msg.insert()
         
         return {
             "success": True,
@@ -372,22 +494,40 @@ class SettingsService:
     
     async def export_user_data(self, user_id: str) -> Dict[str, Any]:
         """Export all user data (GDPR compliance)"""
-        settings = self._get_user_settings(user_id)
+        from beanie import PydanticObjectId
+        from app.database import (
+            User, UserProfile as DbProfile, ClothingItem,
+            OutfitRecommendation, CalendarEvent, ChatMessage
+        )
+        
+        user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+        
+        # Gather all user data
+        user = await self._repo.get_user_by_id(user_id)
+        profile = await self._repo.get_user_profile(user_id)
+        settings = await self._repo.get_user_settings(user_id)
+        
+        # Get related collections
+        clothing = await ClothingItem.find(ClothingItem.user_id == user_id_obj).to_list()
+        recommendations = await OutfitRecommendation.find(OutfitRecommendation.user_id == user_id_obj).to_list()
+        events = await CalendarEvent.find(CalendarEvent.user_id == user_id_obj).to_list()
+        messages = await ChatMessage.find(ChatMessage.user_id == user_id_obj).to_list()
         
         return {
             "user_id": user_id,
             "exported_at": datetime.utcnow().isoformat(),
-            "settings": {
-                k: v.model_dump() if v else None 
-                for k, v in settings.items()
-            }
+            "user": user.model_dump() if user else None,
+            "profile": profile.model_dump() if profile else None,
+            "settings": settings.model_dump() if settings else None,
+            "clothing_items": [c.model_dump() for c in clothing],
+            "recommendations": [r.model_dump() for r in recommendations],
+            "calendar_events": [e.model_dump() for e in events],
+            "chat_messages": [m.model_dump() for m in messages]
         }
     
     async def delete_user_data(self, user_id: str) -> bool:
         """Delete all user data (GDPR compliance)"""
-        if user_id in self._settings:
-            del self._settings[user_id]
-        return True
+        return await self._repo.delete_user(user_id)
 
 
 # Singleton instance

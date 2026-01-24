@@ -35,6 +35,10 @@ class ChatRequest(BaseModel):
         default=None,
         description="User ID for personalized responses"
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session ID for conversation continuity"
+    )
 
 
 class ChatResponse(BaseModel):

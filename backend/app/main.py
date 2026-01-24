@@ -17,6 +17,11 @@ from app.config import settings
 from app.common.logging_config import setup_logging
 from app.common.exceptions import register_exception_handlers
 from app.common.cache import get_cache, start_cache_cleanup_task
+from app.database.connection import (
+    connect_to_database,
+    disconnect_from_database,
+    check_database_health
+)
 
 # ========================================
 # Router Imports
@@ -51,6 +56,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     
+    # Connect to MongoDB
+    try:
+        await connect_to_database()
+        logger.info("✅ MongoDB database connected")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        raise
+    
     # Start cache cleanup background task
     if settings.CACHE_ENABLED:
         asyncio.create_task(start_cache_cleanup_task())
@@ -81,6 +94,10 @@ async def lifespan(app: FastAPI):
     # Clear cache on shutdown
     cache = get_cache()
     await cache.clear()
+    
+    # Disconnect from MongoDB
+    await disconnect_from_database()
+    logger.info("✅ MongoDB connection closed")
     
     logger.info("Application shutdown complete")
 
@@ -230,11 +247,15 @@ async def health():
     cache = get_cache()
     cache_stats = cache.get_stats()
     
+    # Check database health
+    db_health = await check_database_health()
+    
     return {
         "success": True,
-        "status": "healthy",
+        "status": "healthy" if db_health.get("status") == "healthy" else "degraded",
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
+        "database": db_health,
         "cache": cache_stats,
         "services": {
             "auth": "operational",

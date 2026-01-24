@@ -1,10 +1,11 @@
 """
-Onboarding Service - Handles user onboarding logic
+Onboarding Service - Handles user onboarding logic with MongoDB backend
 """
 
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from beanie import PydanticObjectId
 
 from .schemas import (
     OnboardingStep,
@@ -19,6 +20,11 @@ from .schemas import (
     SkinTone,
     SkinUndertone,
     StylePreference
+)
+from app.database import (
+    user_repository,
+    get_user_repository,
+    OnboardingProgress as DbOnboardingProgress,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,7 +80,7 @@ COLOR_RECOMMENDATIONS = {
 
 
 class OnboardingService:
-    """Service for managing user onboarding"""
+    """Service for managing user onboarding with MongoDB"""
     
     STEP_ORDER = [
         OnboardingStep.SELFIE,
@@ -86,19 +92,28 @@ class OnboardingService:
     
     def __init__(self):
         """Initialize onboarding service"""
-        # In-memory storage (use DB in production)
-        self._progress_storage: Dict[str, OnboardingProgress] = {}
+        self._repo = get_user_repository()
     
-    def get_progress(self, user_id: str) -> OnboardingProgress:
+    async def get_progress(self, user_id: str) -> OnboardingProgress:
         """Get onboarding progress for a user"""
-        if user_id not in self._progress_storage:
-            self._progress_storage[user_id] = OnboardingProgress(
-                user_id=user_id,
-                current_step=OnboardingStep.SELFIE,
-                completed_steps=[],
-                step_data={}
-            )
-        return self._progress_storage[user_id]
+        db_progress = await self._repo.get_onboarding_progress(user_id)
+        
+        if not db_progress:
+            # Create new progress if not exists
+            user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+            db_progress = await self._repo.create_onboarding_progress(user_id_obj)
+        
+        # Convert DB model to schema
+        return OnboardingProgress(
+            user_id=user_id,
+            current_step=OnboardingStep(db_progress.current_step) if db_progress.current_step else OnboardingStep.SELFIE,
+            completed_steps=[OnboardingStep(s) for s in db_progress.completed_steps],
+            step_data=db_progress.step_data or {},
+            is_complete=db_progress.is_complete,
+            started_at=db_progress.created_at,
+            completed_at=db_progress.completed_at,
+            updated_at=db_progress.updated_at
+        )
     
     def get_progress_percentage(self, progress: OnboardingProgress) -> float:
         """Calculate progress percentage"""
@@ -133,14 +148,13 @@ class OnboardingService:
         Returns:
             Dict with success status and next step info
         """
-        progress = self.get_progress(user_id)
+        progress = await self.get_progress(user_id)
         
         # Validate and process step data
         processed_data = await self._process_step_data(step, data)
         
         # Update progress
         progress.step_data[step.value] = processed_data
-        progress.updated_at = datetime.utcnow()
         
         # Mark step as completed if not already
         if step not in progress.completed_steps:
@@ -152,19 +166,29 @@ class OnboardingService:
             progress.current_step = next_step
         
         # Check if onboarding is complete
-        if step == OnboardingStep.COMPLETE:
-            progress.is_complete = True
-            progress.completed_at = datetime.utcnow()
+        is_complete = step == OnboardingStep.COMPLETE
         
-        # Save progress
-        self._progress_storage[user_id] = progress
+        # Save to database
+        updates = {
+            "current_step": progress.current_step.value,
+            "completed_steps": [s.value for s in progress.completed_steps],
+            "step_data": progress.step_data,
+            "is_complete": is_complete
+        }
+        
+        if is_complete:
+            updates["completed_at"] = datetime.utcnow()
+            # Also mark user as onboarded
+            await self._repo.update_user(user_id, onboarding_completed=True)
+        
+        await self._repo.update_onboarding_progress(user_id, **updates)
         
         return {
             "success": True,
             "step": step,
             "next_step": next_step,
             "progress_percentage": self.get_progress_percentage(progress),
-            "is_complete": progress.is_complete
+            "is_complete": is_complete
         }
     
     async def _process_step_data(
@@ -218,9 +242,9 @@ class OnboardingService:
             else:
                 return "Winter"
     
-    def get_summary(self, user_id: str) -> OnboardingSummary:
+    async def get_summary(self, user_id: str) -> OnboardingSummary:
         """Get onboarding summary for a user"""
-        progress = self.get_progress(user_id)
+        progress = await self.get_progress(user_id)
         
         summary = OnboardingSummary(user_id=user_id)
         
@@ -325,16 +349,22 @@ class OnboardingService:
             "message": "Face analysis complete"
         }
     
-    def reset_progress(self, user_id: str):
+    async def reset_progress(self, user_id: str):
         """Reset onboarding progress for a user"""
-        if user_id in self._progress_storage:
-            del self._progress_storage[user_id]
+        user_id_obj = PydanticObjectId(user_id) if isinstance(user_id, str) else user_id
+        
+        # Delete existing progress
+        await DbOnboardingProgress.find(DbOnboardingProgress.user_id == user_id_obj).delete()
+        
+        # Create fresh progress
+        await self._repo.create_onboarding_progress(user_id_obj)
+        
+        # Mark user as not onboarded
+        await self._repo.update_user(user_id, onboarding_completed=False)
     
-    def skip_to_step(self, user_id: str, step: OnboardingStep):
+    async def skip_to_step(self, user_id: str, step: OnboardingStep):
         """Skip to a specific step (for testing/admin)"""
-        progress = self.get_progress(user_id)
-        progress.current_step = step
-        self._progress_storage[user_id] = progress
+        await self._repo.update_onboarding_progress(user_id, current_step=step.value)
 
 
 # Singleton instance

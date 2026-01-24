@@ -1,14 +1,14 @@
 """
 Authentication Router
 
-API endpoints for user authentication.
+API endpoints for user authentication with MongoDB backend.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from typing import Optional
 import logging
-import hashlib
 import secrets
+from datetime import datetime, timedelta
 
 from .schemas import (
     LoginRequest, RegisterRequest, RefreshTokenRequest,
@@ -20,6 +20,12 @@ from .jwt_handler import (
     verify_token, get_current_user
 )
 from app.config import settings
+from app.database import (
+    user_repository,
+    get_user_repository,
+    hash_password,
+    verify_password,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,21 +37,6 @@ router = APIRouter(
         403: {"description": "Forbidden"}
     }
 )
-
-# In-memory user store (replace with database in production)
-_users_db: dict = {}
-_refresh_tokens: dict = {}
-
-
-def hash_password(password: str) -> str:
-    """Hash password with salt"""
-    salt = settings.SECRET_KEY[:16]
-    return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify password against hash"""
-    return hash_password(password) == hashed
 
 
 @router.post(
@@ -62,23 +53,22 @@ async def register(request: RegisterRequest) -> AuthResponse:
     - **password**: Minimum 8 characters
     - **name**: User's display name
     """
+    repo = get_user_repository()
+    
     # Check if user exists
-    if request.email in _users_db:
+    existing_user = await repo.get_user_by_email(request.email)
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered"
         )
     
     # Create user
-    user_id = f"user_{secrets.token_hex(8)}"
-    _users_db[request.email] = {
-        "user_id": user_id,
-        "email": request.email,
-        "name": request.name,
-        "password_hash": hash_password(request.password),
-        "roles": ["user"],
-        "onboarding_complete": False
-    }
+    user = await repo.create_user(
+        email=request.email,
+        password=request.password,
+        name=request.name
+    )
     
     logger.info(f"User registered: {request.email}")
     
@@ -86,10 +76,10 @@ async def register(request: RegisterRequest) -> AuthResponse:
         success=True,
         message="Registration successful",
         user=UserAuth(
-            user_id=user_id,
-            email=request.email,
-            name=request.name,
-            roles=["user"]
+            user_id=str(user.id),
+            email=user.email,
+            name=user.name,
+            roles=user.roles
         )
     )
 
@@ -108,10 +98,12 @@ async def login(request: LoginRequest) -> TokenResponse:
     
     Returns access and refresh tokens.
     """
-    # Find user
-    user = _users_db.get(request.email)
+    repo = get_user_repository()
     
-    if not user or not verify_password(request.password, user["password_hash"]):
+    # Authenticate user
+    user = await repo.authenticate_user(request.email, request.password)
+    
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -119,16 +111,23 @@ async def login(request: LoginRequest) -> TokenResponse:
     
     # Create tokens
     token_data = {
-        "user_id": user["user_id"],
-        "email": user["email"],
-        "roles": user["roles"]
+        "user_id": str(user.id),
+        "email": user.email,
+        "roles": user.roles
     }
     
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
     
-    # Store refresh token
-    _refresh_tokens[user["user_id"]] = refresh_token
+    # Store refresh token in session
+    await repo.create_session(
+        user_id=user.id,
+        refresh_token=refresh_token,
+        expires_days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    
+    # Update last login
+    await repo.update_last_login(user.id)
     
     logger.info(f"User logged in: {request.email}")
     
@@ -152,6 +151,8 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
     
     - **refresh_token**: Valid refresh token from login
     """
+    repo = get_user_repository()
+    
     try:
         token_data = verify_token(request.refresh_token)
         
@@ -161,12 +162,20 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
                 detail="Invalid token type"
             )
         
-        # Verify refresh token is still valid
-        stored_token = _refresh_tokens.get(token_data.user_id)
-        if stored_token != request.refresh_token:
+        # Verify session exists and is active
+        session = await repo.get_session_by_token(request.refresh_token)
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has been revoked"
+            )
+        
+        # Check if token is expired
+        if session.expires_at < datetime.utcnow():
+            await repo.invalidate_session(request.refresh_token)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired"
             )
         
         # Create new tokens
@@ -177,19 +186,26 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
         }
         
         access_token = create_access_token(new_token_data)
-        refresh_token = create_refresh_token(new_token_data)
+        new_refresh_token = create_refresh_token(new_token_data)
         
-        # Update stored refresh token
-        _refresh_tokens[token_data.user_id] = refresh_token
+        # Invalidate old session and create new one
+        await repo.invalidate_session(request.refresh_token)
+        await repo.create_session(
+            user_id=token_data.user_id,
+            refresh_token=new_refresh_token,
+            expires_days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
+        )
         
         return TokenResponse(
             success=True,
             access_token=access_token,
-            refresh_token=refresh_token,
+            refresh_token=new_refresh_token,
             token_type="bearer",
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"Token refresh failed: {str(e)}")
         raise HTTPException(
@@ -205,15 +221,16 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
 )
 async def logout(user: UserAuth = Depends(get_current_user)) -> AuthResponse:
     """
-    Logout user and revoke refresh token.
+    Logout user and revoke all refresh tokens.
     
     Requires valid access token in Authorization header.
     """
-    # Revoke refresh token
-    if user.user_id in _refresh_tokens:
-        del _refresh_tokens[user.user_id]
+    repo = get_user_repository()
     
-    logger.info(f"User logged out: {user.user_id}")
+    # Invalidate all user sessions
+    count = await repo.invalidate_all_user_sessions(user.user_id)
+    
+    logger.info(f"User logged out: {user.user_id}, invalidated {count} sessions")
     
     return AuthResponse(
         success=True,
@@ -232,10 +249,25 @@ async def get_me(user: UserAuth = Depends(get_current_user)) -> AuthResponse:
     
     Requires valid access token in Authorization header.
     """
+    repo = get_user_repository()
+    
+    # Get fresh user data from database
+    db_user = await repo.get_user_by_id(user.user_id)
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
     return AuthResponse(
         success=True,
         message="User retrieved successfully",
-        user=user
+        user=UserAuth(
+            user_id=str(db_user.id),
+            email=db_user.email,
+            name=db_user.name,
+            roles=db_user.roles
+        )
     )
 
 
@@ -254,34 +286,35 @@ async def change_password(
     - **current_password**: Current password for verification
     - **new_password**: New password (minimum 8 characters)
     """
-    # Find user in database
-    user_data = None
-    for email, data in _users_db.items():
-        if data["user_id"] == user.user_id:
-            user_data = data
-            break
+    repo = get_user_repository()
     
-    if not user_data:
+    # Get user from database
+    db_user = await repo.get_user_by_id(user.user_id)
+    if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     
     # Verify current password
-    if not verify_password(request.current_password, user_data["password_hash"]):
+    if not verify_password(request.current_password, db_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect"
         )
     
     # Update password
-    user_data["password_hash"] = hash_password(request.new_password)
+    new_hash = hash_password(request.new_password)
+    await repo.update_user(user.user_id, password_hash=new_hash)
+    
+    # Invalidate all sessions (force re-login)
+    await repo.invalidate_all_user_sessions(user.user_id)
     
     logger.info(f"Password changed for user: {user.user_id}")
     
     return AuthResponse(
         success=True,
-        message="Password changed successfully"
+        message="Password changed successfully. Please login again."
     )
 
 
@@ -298,8 +331,10 @@ async def request_password_reset(request: PasswordResetRequest) -> AuthResponse:
     
     Note: In production, this would send an email with a reset link.
     """
+    repo = get_user_repository()
+    
     # Check if user exists
-    user = _users_db.get(request.email)
+    user = await repo.get_user_by_email(request.email)
     
     # Always return success to prevent email enumeration
     if user:
@@ -318,8 +353,13 @@ async def request_password_reset(request: PasswordResetRequest) -> AuthResponse:
 )
 async def health_check() -> dict:
     """Check auth service health"""
+    from app.database import check_database_health
+    
+    db_health = await check_database_health()
+    
     return {
-        "status": "healthy",
+        "status": "healthy" if db_health.get("status") == "healthy" else "degraded",
         "service": "auth",
-        "users_count": len(_users_db)
+        "database": db_health
     }
+

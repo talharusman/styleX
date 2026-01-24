@@ -41,10 +41,10 @@ const Header = ({ variant = 'default', showAuth = true }) => {
         <div className={styles.actions}>
           {showAuth && isLanding && (
             <>
-              <Button variant="ghost" as={Link} to="/auth">
+              <Button variant="ghost" to="/auth">
                 Sign In
               </Button>
-              <Button variant="primary" as={Link} to="/auth">
+              <Button variant="primary" to="/auth">
                 Get Started
               </Button>
             </>

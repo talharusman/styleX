@@ -1,33 +1,65 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight } from 'lucide-react';
-import { useOnboardingStore } from '../../../store';
-import { userApi } from '../../../api';
+import { Sparkles, ArrowRight, AlertCircle } from 'lucide-react';
+import { useOnboardingStore, useAuthStore } from '../../../store';
 import Button from '../../../components/ui/Button';
 import styles from './StepComplete.module.css';
 
+/**
+ * StepComplete Component
+ * Final step of onboarding - saves all data to backend and redirects to dashboard
+ * 
+ * Backend APIs Used:
+ * - POST /api/onboarding/step/skin-tone/{userId}
+ * - POST /api/onboarding/step/body-type/{userId}
+ * - POST /api/onboarding/step/style/{userId}
+ * - POST /api/onboarding/step/complete/{userId}
+ * - PATCH /api/profile/{userId}
+ */
 const StepComplete = () => {
   const navigate = useNavigate();
-  const { getOnboardingData, resetOnboarding } = useOnboardingStore();
+  const [error, setError] = useState(null);
+  const { updateUser } = useAuthStore();
+  const { 
+    getOnboardingData, 
+    completeOnboarding, 
+    resetOnboarding,
+    isSaving 
+  } = useOnboardingStore();
 
   const handleComplete = async () => {
+    setError(null);
+    
     try {
-      // Save onboarding data to backend
-      const data = getOnboardingData();
-      await userApi.updateProfile({
-        ...data,
-        onboardingCompleted: true,
-      });
-
+      // Complete onboarding - this saves all data to backend
+      const result = await completeOnboarding();
+      
+      if (!result.success) {
+        // Even if backend sync fails, we can still proceed with local data
+        console.warn('Onboarding sync warning:', result.error);
+      }
+      
+      // Update auth store to reflect onboarding completion
+      updateUser({ onboardingCompleted: true });
+      
       // Reset onboarding store and navigate to dashboard
       resetOnboarding();
       navigate('/dashboard');
-    } catch (error) {
-      console.error('Failed to save profile:', error);
+    } catch (err) {
+      console.error('Failed to complete onboarding:', err);
+      setError('Something went wrong. Please try again.');
+      
       // Still navigate to dashboard on error - data is saved locally
-      navigate('/dashboard');
+      setTimeout(() => {
+        updateUser({ onboardingCompleted: true });
+        resetOnboarding();
+        navigate('/dashboard');
+      }, 2000);
     }
   };
+
+  const onboardingData = getOnboardingData();
 
   return (
     <div className={styles.step}>
@@ -54,6 +86,39 @@ const StepComplete = () => {
           just for you.
         </p>
       </motion.div>
+
+      {/* Summary of collected data */}
+      {onboardingData && (
+        <motion.div
+          className={styles.summary}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <div className={styles.summaryItem}>
+            <span className={styles.summaryLabel}>Body Type:</span>
+            <span className={styles.summaryValue} style={{ textTransform: 'capitalize' }}>
+              {onboardingData.bodyType || 'Not set'}
+            </span>
+          </div>
+          {onboardingData.faceAnalysis?.undertone && (
+            <div className={styles.summaryItem}>
+              <span className={styles.summaryLabel}>Undertone:</span>
+              <span className={styles.summaryValue} style={{ textTransform: 'capitalize' }}>
+                {onboardingData.faceAnalysis.undertone}
+              </span>
+            </div>
+          )}
+          {onboardingData.stylePreferences?.length > 0 && (
+            <div className={styles.summaryItem}>
+              <span className={styles.summaryLabel}>Style:</span>
+              <span className={styles.summaryValue}>
+                {onboardingData.stylePreferences.slice(0, 3).join(', ')}
+              </span>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       <motion.div
         className={styles.highlights}
@@ -84,6 +149,17 @@ const StepComplete = () => {
         </div>
       </motion.div>
 
+      {error && (
+        <motion.div 
+          className={styles.error}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </motion.div>
+      )}
+
       <motion.div
         className={styles.actions}
         initial={{ opacity: 0 }}
@@ -93,10 +169,11 @@ const StepComplete = () => {
         <Button
           size="lg"
           onClick={handleComplete}
+          loading={isSaving}
           icon={<ArrowRight size={20} />}
           iconPosition="right"
         >
-          Start Exploring
+          {isSaving ? 'Saving...' : 'Start Exploring'}
         </Button>
       </motion.div>
     </div>

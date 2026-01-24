@@ -50,10 +50,16 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
     
     # ========================================
-    # Database Settings
+    # Database Settings - MongoDB
     # ========================================
-    DATABASE_URL: str = "sqlite+aiosqlite:///./stylex.db"
+    DATABASE_URL: str = "mongodb://localhost:27017"
+    DATABASE_NAME: str = "stylex"
     DATABASE_ECHO: bool = False
+    
+    # MongoDB Connection Pool Settings
+    MONGO_MIN_POOL_SIZE: int = 10
+    MONGO_MAX_POOL_SIZE: int = 100
+    MONGO_MAX_IDLE_TIME_MS: int = 30000
     
     # ========================================
     # API Keys - External Services

@@ -8,6 +8,7 @@ import {
   Clock,
   MapPin,
   X,
+  Shirt,
 } from 'lucide-react';
 import {
   format,
@@ -22,13 +23,28 @@ import {
   isSameDay,
   isToday,
 } from 'date-fns';
-import { calendarApi } from '../../api';
+import { calendarApi, chatApi, parseApiError } from '../../api';
+import { useAuthStore } from '../../store';
 import { Header } from '../../components/layout';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import Card from '../../components/ui/Card';
 import styles from './Calendar.module.css';
+
+/**
+ * Calendar Page
+ * Displays user's calendar events with outfit suggestions
+ * 
+ * Backend APIs Used:
+ * - GET /api/calendar?user_id={userId} - List events
+ * - GET /api/calendar/month/{year}/{month}?user_id={userId} - Month view
+ * - POST /api/calendar - Create event
+ * - PUT /api/calendar/{eventId} - Update event
+ * - DELETE /api/calendar/{eventId} - Delete event
+ * - GET /api/calendar/{eventId}/outfit?user_id={userId} - Get outfit suggestion
+ * - POST /api/chat/event-outfit - AI outfit suggestion for event
+ */
 
 const eventTypes = [
   { id: 'business', label: 'Business', color: '#2C3E50' },
@@ -40,11 +56,15 @@ const eventTypes = [
 ];
 
 const CalendarPage = () => {
+  const { user } = useAuthStore();
+  const userId = user?.user_id || localStorage.getItem('userId');
+  
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [generatingOutfit, setGeneratingOutfit] = useState(null);
   const [newEvent, setNewEvent] = useState({
     title: '',
     date: '',
@@ -55,24 +75,45 @@ const CalendarPage = () => {
 
   useEffect(() => {
     fetchEvents();
-  }, [currentMonth]);
+  }, [currentMonth, userId]);
 
+  /**
+   * Fetch events for the current month
+   * Uses GET /api/calendar/month/{year}/{month} or GET /api/calendar
+   */
   const fetchEvents = async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
-      const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-      const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
-      const response = await calendarApi.getEvents({ start, end });
-      setEvents(response.data);
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth() + 1; // API expects 1-12
+      
+      // Try month view endpoint first
+      try {
+        const response = await calendarApi.getMonthView(year, month, userId);
+        setEvents(response.data.events || response.data || []);
+        return;
+      } catch (e) {
+        // Fall back to date range query
+        const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+        const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+        const response = await calendarApi.getEvents(userId, { start, end });
+        setEvents(response.data.events || response.data || []);
+      }
     } catch (error) {
       console.error('Failed to fetch events:', error);
-      // Mock data for demo
+      // Mock data for demo when API is unavailable
       setEvents([
         {
           id: 1,
           title: 'Team Meeting',
           date: format(new Date(), 'yyyy-MM-dd'),
           time: '10:00',
+          start_time: new Date().toISOString(),
           type: 'business',
           outfit: { id: 1, title: 'Smart Casual' },
         },
@@ -81,6 +122,7 @@ const CalendarPage = () => {
           title: 'Dinner Date',
           date: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
           time: '19:00',
+          start_time: addDays(new Date(), 2).toISOString(),
           type: 'date',
           outfit: { id: 2, title: 'Evening Elegant' },
         },
@@ -89,6 +131,7 @@ const CalendarPage = () => {
           title: 'Weekend Brunch',
           date: format(addDays(new Date(), 5), 'yyyy-MM-dd'),
           time: '11:00',
+          start_time: addDays(new Date(), 5).toISOString(),
           type: 'casual',
         },
       ]);
@@ -111,9 +154,10 @@ const CalendarPage = () => {
 
     while (day <= endDate) {
       const currentDay = day;
-      const dayEvents = events.filter(
-        (e) => e.date === format(currentDay, 'yyyy-MM-dd')
-      );
+      const dayEvents = events.filter((e) => {
+        const eventDate = e.date || (e.start_time ? e.start_time.split('T')[0] : null);
+        return eventDate === format(currentDay, 'yyyy-MM-dd');
+      });
 
       days.push(
         <motion.div
@@ -152,22 +196,99 @@ const CalendarPage = () => {
     return days;
   };
 
-  const selectedDateEvents = events.filter(
-    (e) => e.date === format(selectedDate, 'yyyy-MM-dd')
-  );
+  const selectedDateEvents = events.filter((e) => {
+    const eventDate = e.date || (e.start_time ? e.start_time.split('T')[0] : null);
+    return eventDate === format(selectedDate, 'yyyy-MM-dd');
+  });
 
+  /**
+   * Create a new event
+   * POST /api/calendar
+   */
   const handleCreateEvent = async () => {
+    if (!userId || !newEvent.title) return;
+    
     try {
       const eventData = {
-        ...newEvent,
-        date: format(selectedDate, 'yyyy-MM-dd'),
+        user_id: userId,
+        title: newEvent.title,
+        start_time: `${format(selectedDate, 'yyyy-MM-dd')}T${newEvent.time || '09:00'}:00`,
+        end_time: `${format(selectedDate, 'yyyy-MM-dd')}T${newEvent.time ? 
+          format(new Date(`2000-01-01T${newEvent.time}`).getTime() + 3600000, 'HH:mm') : '10:00'}:00`,
+        location: newEvent.location,
+        type: newEvent.type,
       };
+      
       await calendarApi.createEvent(eventData);
       await fetchEvents();
       setShowEventModal(false);
       setNewEvent({ title: '', date: '', time: '', type: 'casual', location: '' });
     } catch (error) {
       console.error('Failed to create event:', error);
+      // For demo, add locally
+      const mockEvent = {
+        id: Date.now(),
+        title: newEvent.title,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        time: newEvent.time || '09:00',
+        type: newEvent.type,
+        location: newEvent.location,
+      };
+      setEvents([...events, mockEvent]);
+      setShowEventModal(false);
+      setNewEvent({ title: '', date: '', time: '', type: 'casual', location: '' });
+    }
+  };
+
+  /**
+   * Generate outfit suggestion for an event
+   * Uses GET /api/calendar/{eventId}/outfit or POST /api/chat/event-outfit
+   */
+  const handleGenerateOutfit = async (event) => {
+    setGeneratingOutfit(event.id);
+    
+    try {
+      // Try dedicated endpoint first
+      try {
+        const response = await calendarApi.getEventOutfit(event.id, userId);
+        // Update event with outfit
+        setEvents(events.map(e => 
+          e.id === event.id ? { ...e, outfit: response.data } : e
+        ));
+        return;
+      } catch (e) {
+        // Fall back to AI chat endpoint
+        const response = await chatApi.getEventOutfit({
+          event_title: event.title,
+          event_time: event.time || '10:00 AM',
+          location: event.location || '',
+        });
+        
+        // Update event with generated outfit
+        setEvents(events.map(e => 
+          e.id === event.id ? { 
+            ...e, 
+            outfit: { 
+              title: response.data?.outfit_name || 'Suggested Outfit',
+              description: response.data?.description,
+            } 
+          } : e
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to generate outfit:', error);
+      // Mock outfit for demo
+      setEvents(events.map(e => 
+        e.id === event.id ? { 
+          ...e, 
+          outfit: { 
+            id: Date.now(), 
+            title: eventTypes.find(t => t.id === event.type)?.label + ' Look' 
+          } 
+        } : e
+      ));
+    } finally {
+      setGeneratingOutfit(null);
     }
   };
 
@@ -271,7 +392,8 @@ const CalendarPage = () => {
                           <div className={styles.eventMeta}>
                             <span className={styles.eventTime}>
                               <Clock size={14} />
-                              {event.time}
+                              {event.time || (event.start_time ? 
+                                format(new Date(event.start_time), 'HH:mm') : '')}
                             </span>
                             {event.location && (
                               <span className={styles.eventLocation}>
@@ -282,12 +404,19 @@ const CalendarPage = () => {
                           </div>
                           {event.outfit ? (
                             <div className={styles.eventOutfit}>
+                              <Shirt size={14} />
                               <span className={styles.outfitLabel}>Outfit:</span>
                               <span className={styles.outfitName}>{event.outfit.title}</span>
                             </div>
                           ) : (
-                            <Button variant="outline" size="sm" className={styles.generateBtn}>
-                              Generate Outfit
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className={styles.generateBtn}
+                              onClick={() => handleGenerateOutfit(event)}
+                              loading={generatingOutfit === event.id}
+                            >
+                              {generatingOutfit === event.id ? 'Generating...' : 'Generate Outfit'}
                             </Button>
                           )}
                         </div>
@@ -328,7 +457,9 @@ const CalendarPage = () => {
             <Button variant="outline" onClick={() => setShowEventModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateEvent}>Create Event</Button>
+            <Button onClick={handleCreateEvent} disabled={!newEvent.title}>
+              Create Event
+            </Button>
           </>
         }
       >

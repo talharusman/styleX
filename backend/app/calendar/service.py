@@ -1,5 +1,5 @@
 """
-Calendar Service - Handles Google Calendar API interactions
+Calendar Service - Handles Google Calendar API interactions with MongoDB backend
 """
 
 import os
@@ -7,6 +7,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta
 import httpx
+from beanie import PydanticObjectId
 
 from .schemas import (
     CalendarEvent,
@@ -19,12 +20,18 @@ from .schemas import (
     Reminder
 )
 from .oauth import GoogleOAuth, get_google_oauth
+from app.database import (
+    user_repository,
+    get_user_repository,
+    CalendarEvent as DbCalendarEvent,
+    UserSettings,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class CalendarService:
-    """Service for interacting with Google Calendar API"""
+    """Service for interacting with Google Calendar API with MongoDB storage"""
     
     CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
     
@@ -36,37 +43,45 @@ class CalendarService:
             oauth: GoogleOAuth instance for authentication
         """
         self.oauth = oauth or get_google_oauth()
+        self._repo = get_user_repository()
+    
+    async def set_user_tokens(self, user_id: str, tokens: Dict[str, Any]):
+        """Store tokens for a user in MongoDB"""
+        await self._repo.update_user_settings(
+            user_id,
+            google_calendar_connected=True,
+            google_access_token=tokens.get("access_token"),
+            google_refresh_token=tokens.get("refresh_token"),
+            google_token_expires_at=datetime.utcnow() + timedelta(seconds=tokens.get("expires_in", 3600))
+        )
+    
+    async def get_user_tokens(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get stored tokens for a user from MongoDB"""
+        settings = await self._repo.get_user_settings(user_id)
+        if not settings or not settings.google_calendar_connected:
+            return None
         
-        # In-memory token storage (use DB in production)
-        self._user_tokens: Dict[str, Dict[str, Any]] = {}
-    
-    def set_user_tokens(self, user_id: str, tokens: Dict[str, Any]):
-        """Store tokens for a user"""
-        self._user_tokens[user_id] = {
-            **tokens,
-            "stored_at": datetime.utcnow()
+        return {
+            "access_token": settings.google_access_token,
+            "refresh_token": settings.google_refresh_token,
+            "expires_at": settings.google_token_expires_at
         }
-    
-    def get_user_tokens(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get stored tokens for a user"""
-        return self._user_tokens.get(user_id)
     
     async def _get_valid_token(self, user_id: str) -> str:
         """Get a valid access token, refreshing if necessary"""
-        tokens = self.get_user_tokens(user_id)
+        tokens = await self.get_user_tokens(user_id)
         
         if not tokens:
             raise ValueError("User not authenticated with Google Calendar")
         
         # Check if token is expired (with 5 minute buffer)
-        stored_at = tokens.get("stored_at", datetime.utcnow())
-        expires_in = tokens.get("expires_in", 3600)
+        expires_at = tokens.get("expires_at")
         
-        if datetime.utcnow() - stored_at > timedelta(seconds=expires_in - 300):
+        if expires_at and datetime.utcnow() > expires_at - timedelta(minutes=5):
             # Token is expired or about to expire
             if tokens.get("refresh_token"):
                 new_tokens = await self.oauth.refresh_access_token(tokens["refresh_token"])
-                self.set_user_tokens(user_id, {
+                await self.set_user_tokens(user_id, {
                     **new_tokens,
                     "refresh_token": tokens["refresh_token"]  # Keep refresh token
                 })

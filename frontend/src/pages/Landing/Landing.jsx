@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles, Calendar, Palette, Sun } from 'lucide-react';
 import { Header, Footer } from '../../components/layout';
@@ -86,7 +85,6 @@ const Landing = () => {
 
           <motion.div className={styles.heroActions} variants={staggerItem}>
             <Button
-              as={Link}
               to="/auth"
               size="lg"
               icon={<ArrowRight size={20} />}
@@ -94,7 +92,7 @@ const Landing = () => {
             >
               Get Styled Free
             </Button>
-            <Button as={Link} to="/#features" variant="outline" size="lg">
+            <Button href="#features" variant="outline" size="lg">
               See How It Works
             </Button>
           </motion.div>
@@ -321,7 +319,6 @@ const Landing = () => {
               Join thousands who've discovered their perfect look with inStyle.
             </p>
             <Button
-              as={Link}
               to="/auth"
               size="xl"
               icon={<ArrowRight size={20} />}

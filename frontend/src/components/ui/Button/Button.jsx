@@ -1,6 +1,10 @@
 import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import styles from './Button.module.css';
+
+// Create motion-enabled Link component
+const MotionLink = motion.create(Link);
 
 const Button = forwardRef(
   (
@@ -14,12 +18,28 @@ const Button = forwardRef(
       icon,
       iconPosition = 'left',
       as = 'button',
+      to,
+      href,
       className = '',
       ...props
     },
     ref
   ) => {
-    const Component = as === 'button' ? motion.button : motion.a;
+    // Determine the component to render
+    let Component;
+    if (to) {
+      // Use react-router Link for internal navigation
+      Component = MotionLink;
+    } else if (href || as === 'a') {
+      // Use anchor for external links
+      Component = motion.a;
+    } else if (typeof as === 'function' || typeof as === 'object') {
+      // Custom component passed (like Link)
+      Component = motion.create ? motion.create(as) : motion(as);
+    } else {
+      // Default to button
+      Component = motion.button;
+    }
 
     const buttonClasses = [
       styles.button,
@@ -42,6 +62,8 @@ const Button = forwardRef(
         whileHover={{ scale: disabled ? 1 : 1.02 }}
         whileTap={{ scale: disabled ? 1 : 0.98 }}
         transition={{ duration: 0.15 }}
+        {...(to ? { to } : {})}
+        {...(href ? { href } : {})}
         {...props}
       >
         {loading && (

@@ -2,10 +2,27 @@ import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Upload, Check, AlertCircle } from 'lucide-react';
 import { useOnboardingStore } from '../../../store';
-import { analysisApi } from '../../../api';
+import { faceAnalysisApi, fileToBase64 } from '../../../api';
 import Button from '../../../components/ui/Button';
 import styles from './StepSelfie.module.css';
 
+/**
+ * StepSelfie Component
+ * Handles selfie upload and face analysis during onboarding
+ * 
+ * Backend API Used:
+ * - POST /api/face-analysis/analyze/upload (multipart/form-data)
+ * - Alternative: POST /api/face-analysis/analyze (base64)
+ * 
+ * Response format:
+ * {
+ *   success: true,
+ *   skin_features: { undertone, skin_depth, seasonal_type, skin_rgb, skin_hex, confidence },
+ *   facial_features: { face_shape, face_width, face_height, confidence },
+ *   color_recommendations: { best_colors, avoid_colors, neutral_colors, accent_colors, metals },
+ *   style_tips: [...]
+ * }
+ */
 const StepSelfie = () => {
   const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -16,7 +33,9 @@ const StepSelfie = () => {
     isAnalyzing,
     setAnalyzing,
     setSelfieData,
+    analyzeSelfie,
     faceAnalysis,
+    colorRecommendations,
     nextStep,
     setError: setStoreError,
   } = useOnboardingStore();
@@ -43,18 +62,11 @@ const StepSelfie = () => {
     reader.onload = (e) => setPreview(e.target.result);
     reader.readAsDataURL(file);
 
-    // Analyze face
-    setAnalyzing(true);
-    try {
-      const response = await analysisApi.analyzeFace(file);
-      setSelfieData(preview, response.data);
-    } catch (err) {
-      const errorMessage =
-        err.response?.data?.message || 'Failed to analyze image. Please try again.';
-      setError(errorMessage);
-      setStoreError(errorMessage);
-    } finally {
-      setAnalyzing(false);
+    // Use the store's analyzeSelfie method which calls the API
+    const result = await analyzeSelfie(file);
+    
+    if (!result.success) {
+      setError(result.error || 'Failed to analyze image. Please try again.');
     }
   };
 
@@ -184,7 +196,37 @@ const StepSelfie = () => {
                   {faceAnalysis.undertone || 'Warm'}
                 </span>
               </div>
+              {faceAnalysis.seasonalType && (
+                <div className={styles.attribute}>
+                  <span className={styles.attributeLabel}>Season</span>
+                  <span className={styles.attributeValue} style={{ textTransform: 'capitalize' }}>
+                    {faceAnalysis.seasonalType}
+                  </span>
+                </div>
+              )}
+              {faceAnalysis.faceShape && (
+                <div className={styles.attribute}>
+                  <span className={styles.attributeLabel}>Face Shape</span>
+                  <span className={styles.attributeValue} style={{ textTransform: 'capitalize' }}>
+                    {faceAnalysis.faceShape}
+                  </span>
+                </div>
+              )}
             </div>
+            
+            {/* Color Recommendations */}
+            {colorRecommendations?.best_colors && (
+              <div className={styles.colorRecs}>
+                <h5 className={styles.colorRecsTitle}>Your Best Colors</h5>
+                <div className={styles.colorList}>
+                  {colorRecommendations.best_colors.slice(0, 4).map((color, i) => (
+                    <span key={i} className={styles.colorTag}>
+                      {color}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 

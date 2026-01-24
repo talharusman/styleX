@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, Edit2, Save, X } from 'lucide-react';
+import { Camera, Edit2, Save, X, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../../store';
-import { userApi } from '../../api';
+import { profileApi, faceAnalysisApi, parseApiError } from '../../api';
 import { Header } from '../../components/layout';
 import Button from '../../components/ui/Button';
 import Avatar from '../../components/ui/Avatar';
@@ -10,6 +10,18 @@ import Card from '../../components/ui/Card';
 import Chip from '../../components/ui/Chip';
 import { staggerContainer, staggerItem } from '../../styles/tokens';
 import styles from './Profile.module.css';
+
+/**
+ * Profile Page
+ * Displays and allows editing of user profile data
+ * 
+ * Backend APIs Used:
+ * - GET /api/profile/{userId} - Get user profile
+ * - PATCH /api/profile/{userId} - Update user profile
+ * - GET /api/profile/{userId}/style - Get style profile
+ * - GET /api/profile/{userId}/color-recommendations - Get color recommendations
+ * - POST /api/face-analysis/analyze/upload - Re-analyze selfie
+ */
 
 const styleOptions = [
   'Minimal', 'Classic', 'Streetwear', 'Bohemian', 'Athletic',
@@ -25,27 +37,107 @@ const colorPalettes = [
 
 const Profile = () => {
   const { user, updateUser } = useAuthStore();
+  const userId = user?.user_id || localStorage.getItem('userId');
+  
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fetchingProfile, setFetchingProfile] = useState(true);
+  const [error, setError] = useState(null);
+  const [colorRecommendations, setColorRecommendations] = useState(null);
+  
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    bodyType: user?.bodyType || 'average',
-    skinTone: user?.skinTone || 'Medium Warm',
+    bodyType: user?.bodyType || user?.body_type || 'average',
+    skinTone: user?.skinTone || user?.skin_tone || 'Medium Warm',
     undertone: user?.undertone || 'Warm',
-    stylePreferences: user?.stylePreferences || ['Minimal', 'Classic'],
+    stylePreferences: user?.stylePreferences || user?.style_preference ? 
+      [user?.style_preference] : ['Minimal', 'Classic'],
     favoriteColors: user?.favoriteColors || ['neutrals'],
     height: user?.height || '',
+    gender: user?.gender || '',
   });
 
+  // Fetch full profile from backend on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!userId) {
+        setFetchingProfile(false);
+        return;
+      }
+      
+      try {
+        const response = await profileApi.getProfile(userId);
+        const data = response.data;
+        
+        setProfile({
+          name: data.name || profile.name,
+          email: data.email || profile.email,
+          bodyType: data.body_type || profile.bodyType,
+          skinTone: data.skin_tone || profile.skinTone,
+          undertone: data.undertone || profile.undertone,
+          stylePreferences: data.style_preference ? 
+            (Array.isArray(data.style_preference) ? data.style_preference : [data.style_preference]) : 
+            profile.stylePreferences,
+          favoriteColors: data.favorite_colors || profile.favoriteColors,
+          height: data.height || profile.height,
+          gender: data.gender || profile.gender,
+        });
+        
+        // Also fetch color recommendations
+        try {
+          const colorResponse = await profileApi.getColorRecommendations(userId);
+          setColorRecommendations(colorResponse.data);
+        } catch (e) {
+          // Color recommendations endpoint may not be available
+        }
+      } catch (error) {
+        console.error('Failed to fetch profile:', error);
+        // Use local data
+      } finally {
+        setFetchingProfile(false);
+      }
+    };
+    
+    fetchProfile();
+  }, [userId]);
+
+  /**
+   * Save profile changes to backend
+   * PATCH /api/profile/{userId}
+   */
   const handleSave = async () => {
+    if (!userId) {
+      setError('User not authenticated');
+      return;
+    }
+    
     setLoading(true);
+    setError(null);
+    
     try {
-      await userApi.updateProfile(profile);
-      updateUser(profile);
+      await profileApi.updateProfile(userId, {
+        name: profile.name,
+        body_type: profile.bodyType,
+        skin_tone: profile.skinTone,
+        style_preference: profile.stylePreferences[0], // API expects single value
+        height: profile.height,
+        gender: profile.gender,
+      });
+      
+      // Update local auth store
+      updateUser({
+        ...profile,
+        body_type: profile.bodyType,
+        skin_tone: profile.skinTone,
+        style_preference: profile.stylePreferences[0],
+      });
+      
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update profile:', error);
+      const { message } = parseApiError(error);
+      setError(message || 'Failed to save changes. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -68,6 +160,28 @@ const Profile = () => {
         : [...prev.favoriteColors, paletteId],
     }));
   };
+
+  /**
+   * Re-analyze selfie for updated skin/undertone
+   * Would trigger POST /api/face-analysis/analyze/upload
+   */
+  const handleRetakeSelfie = () => {
+    // This would open a modal or navigate to selfie capture
+    // For now, we'll just log
+    console.log('Retake selfie analysis');
+    // In production: navigate to /onboarding with step=2 or open modal
+  };
+
+  if (fetchingProfile) {
+    return (
+      <div className={styles.page}>
+        <Header />
+        <main className={styles.main}>
+          <div className={styles.loading}>Loading profile...</div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -102,11 +216,25 @@ const Profile = () => {
             <Button
               variant={isEditing ? 'outline' : 'primary'}
               icon={isEditing ? <X size={18} /> : <Edit2 size={18} />}
-              onClick={() => setIsEditing(!isEditing)}
+              onClick={() => {
+                if (isEditing) {
+                  // Cancel - reset to original values
+                  setError(null);
+                }
+                setIsEditing(!isEditing);
+              }}
             >
               {isEditing ? 'Cancel' : 'Edit Profile'}
             </Button>
           </motion.section>
+
+          {/* Error message */}
+          {error && (
+            <motion.div className={styles.errorBanner} variants={staggerItem}>
+              <AlertCircle size={18} />
+              <span>{error}</span>
+            </motion.div>
+          )}
 
           {/* Profile Content */}
           <div className={styles.content}>
@@ -152,13 +280,46 @@ const Profile = () => {
 
                 {isEditing && (
                   <div className={styles.editSection}>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={handleRetakeSelfie}>
                       Retake Selfie Analysis
                     </Button>
                   </div>
                 )}
               </Card>
             </motion.section>
+
+            {/* Color Recommendations from API */}
+            {colorRecommendations && (
+              <motion.section variants={staggerItem}>
+                <Card padding="lg">
+                  <h2 className={styles.sectionTitle}>Your Best Colors</h2>
+                  <p className={styles.sectionDescription}>
+                    Based on your skin tone analysis, these colors will look great on you.
+                  </p>
+                  
+                  <div className={styles.colorRecsGrid}>
+                    {colorRecommendations.best_colors?.slice(0, 6).map((color, i) => (
+                      <span key={i} className={styles.colorRecTag}>
+                        {color}
+                      </span>
+                    ))}
+                  </div>
+                  
+                  {colorRecommendations.avoid_colors?.length > 0 && (
+                    <>
+                      <h3 className={styles.subSectionTitle}>Colors to Avoid</h3>
+                      <div className={styles.colorRecsGrid}>
+                        {colorRecommendations.avoid_colors?.slice(0, 4).map((color, i) => (
+                          <span key={i} className={styles.colorAvoidTag}>
+                            {color}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </motion.section>
+            )}
 
             {/* Style Preferences */}
             <motion.section variants={staggerItem}>

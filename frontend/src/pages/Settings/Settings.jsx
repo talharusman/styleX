@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,9 +22,23 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuthStore } from '../../store';
+import { settingsApi, parseApiError } from '../../api';
 import { Button, Card, Modal } from '../../components/ui';
 import { Header, Footer } from '../../components/layout';
 import styles from './Settings.module.css';
+
+/**
+ * Settings Page
+ * Manages user settings including notifications, privacy, and appearance
+ * 
+ * Backend APIs Used:
+ * - GET /api/settings/{userId} - Get all settings
+ * - PATCH /api/settings/{userId}/notifications - Update notification settings
+ * - PATCH /api/settings/{userId}/privacy - Update privacy settings
+ * - PATCH /api/settings/{userId}/appearance - Update appearance settings
+ * - GET /api/settings/{userId}/export - Export user data (GDPR)
+ * - DELETE /api/settings/{userId}/data - Delete user data (GDPR)
+ */
 
 const settingsSections = [
   {
@@ -62,31 +76,116 @@ const settingsSections = [
 function Settings() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const userId = user?.user_id || localStorage.getItem('userId');
+  
   const [activeSection, setActiveSection] = useState('account');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
   
   // Settings state
   const [settings, setSettings] = useState({
-    // Notifications
+    // Notifications - maps to backend: daily_outfit, weather_alerts, event_reminders, push_enabled
     emailNotifications: true,
     pushNotifications: true,
     weeklyDigest: true,
     eventReminders: true,
     styleUpdates: false,
     
-    // Appearance
+    // Appearance - maps to backend: theme, language
     theme: 'system', // 'light', 'dark', 'system'
     compactMode: false,
     
-    // Privacy
+    // Privacy - maps to backend: profile_visible, share_recommendations
     profileVisibility: 'private',
     dataSharing: false,
     analytics: true,
   });
 
-  const handleSettingChange = (key, value) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+  // Fetch settings from backend on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        const response = await settingsApi.getSettings(userId);
+        const data = response.data;
+        
+        // Map backend settings to frontend state
+        setSettings({
+          // Notifications
+          emailNotifications: data.notifications?.daily_outfit ?? true,
+          pushNotifications: data.notifications?.push_enabled ?? true,
+          weeklyDigest: data.notifications?.weekly_digest ?? true,
+          eventReminders: data.notifications?.event_reminders ?? true,
+          styleUpdates: data.notifications?.style_updates ?? false,
+          
+          // Appearance
+          theme: data.appearance?.theme || 'system',
+          compactMode: data.appearance?.compact_mode ?? false,
+          
+          // Privacy
+          profileVisibility: data.privacy?.profile_visible ? 'public' : 'private',
+          dataSharing: data.privacy?.share_recommendations ?? false,
+          analytics: data.privacy?.analytics ?? true,
+        });
+      } catch (error) {
+        console.log('Using default settings');
+        // Keep defaults on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchSettings();
+  }, [userId]);
+
+  /**
+   * Update settings and sync with backend
+   */
+  const handleSettingChange = async (key, value) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    
+    if (!userId) return;
+    
+    // Determine which API to call based on setting type
+    setSaving(true);
+    try {
+      if (['emailNotifications', 'pushNotifications', 'weeklyDigest', 'eventReminders', 'styleUpdates'].includes(key)) {
+        // Update notifications
+        await settingsApi.updateNotifications(userId, {
+          daily_outfit: newSettings.emailNotifications,
+          push_enabled: newSettings.pushNotifications,
+          event_reminders: newSettings.eventReminders,
+          weather_alerts: true, // Keep enabled by default
+        });
+      } else if (['theme', 'compactMode'].includes(key)) {
+        // Update appearance
+        await settingsApi.updateAppearance(userId, {
+          theme: newSettings.theme,
+          compact_mode: newSettings.compactMode,
+        });
+      } else if (['profileVisibility', 'dataSharing', 'analytics'].includes(key)) {
+        // Update privacy
+        await settingsApi.updatePrivacy(userId, {
+          profile_visible: newSettings.profileVisibility === 'public',
+          share_recommendations: newSettings.dataSharing,
+          analytics: newSettings.analytics,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save setting:', error);
+      // Revert on error
+      setSettings(settings);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -94,22 +193,64 @@ function Settings() {
     navigate('/');
   };
 
+  /**
+   * Export user data (GDPR compliance)
+   * GET /api/settings/{userId}/export
+   */
+  const handleExportData = async () => {
+    if (!userId) return;
+    
+    setExportingData(true);
+    try {
+      const response = await settingsApi.exportData(userId);
+      // Download the data as JSON
+      const dataStr = JSON.stringify(response.data, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stylex-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export data:', error);
+      alert('Failed to export data. Please try again.');
+    } finally {
+      setExportingData(false);
+    }
+  };
+
+  /**
+   * Delete user account and data (GDPR compliance)
+   * DELETE /api/settings/{userId}/data
+   */
   const handleDeleteAccount = async () => {
-    // In production, this would call an API
-    console.log('Deleting account...');
-    await logout();
-    navigate('/');
+    if (!userId) return;
+    
+    try {
+      await settingsApi.deleteData(userId);
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      // Still logout locally
+      await logout();
+      navigate('/');
+    }
   };
 
   const renderSection = () => {
     switch (activeSection) {
       case 'account':
-        return <AccountSection user={user} />;
+        return <AccountSection user={user} onExportData={handleExportData} exportingData={exportingData} />;
       case 'notifications':
         return (
           <NotificationsSection
             settings={settings}
             onChange={handleSettingChange}
+            saving={saving}
           />
         );
       case 'privacy':
@@ -118,6 +259,7 @@ function Settings() {
             settings={settings}
             onChange={handleSettingChange}
             onDeleteAccount={() => setShowDeleteModal(true)}
+            saving={saving}
           />
         );
       case 'appearance':
@@ -279,7 +421,9 @@ function Settings() {
   );
 }
 
-function AccountSection({ user }) {
+function AccountSection({ user, onExportData, exportingData }) {
+  const navigate = useNavigate();
+  
   return (
     <div className={styles.section}>
       <h2 className={styles.sectionTitle}>Account</h2>
@@ -298,7 +442,7 @@ function AccountSection({ user }) {
           </div>
         </div>
 
-        <Button variant="secondary" size="small">
+        <Button variant="secondary" size="small" onClick={() => navigate('/profile')}>
           Edit Profile
         </Button>
       </Card>
@@ -346,9 +490,14 @@ function AccountSection({ user }) {
           Download a copy of all your data including preferences, saved outfits,
           and calendar events.
         </p>
-        <Button variant="secondary" size="small">
+        <Button 
+          variant="secondary" 
+          size="small"
+          onClick={onExportData}
+          disabled={exportingData}
+        >
           <Download size={16} />
-          Export Data
+          {exportingData ? 'Exporting...' : 'Export Data'}
         </Button>
       </Card>
     </div>
