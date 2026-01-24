@@ -1,0 +1,346 @@
+[
+  {
+    "image": "0.png",
+    "processing_time_ms": 13647.68,
+    "overall_confidence": 0.6437,
+    "features": {
+      "colors": [
+        {
+          "name": "White",
+          "hex": "#e5e0e3",
+          "rgb": [
+            229,
+            224,
+            227
+          ],
+          "percentage": 85.79
+        },
+        {
+          "name": "Red",
+          "hex": "#b0384c",
+          "rgb": [
+            176,
+            56,
+            76
+          ],
+          "percentage": 7.21
+        }
+      ],
+      "dominant_color": "White",
+      "design": {
+        "pattern": "Checks",
+        "confidence": 0.1139
+      },
+      "category": {
+        "type": "T-Shirt",
+        "confidence": 0.9789
+      },
+      "weather": {
+        "season": "Summer",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Casual",
+        "confidence": 0.3675
+      },
+      "fabric": {
+        "type": "Cotton",
+        "confidence": 0.4
+      },
+      "formality": {
+        "level": 1,
+        "confidence": 0.9
+      }
+    },
+    "simplified_output": {
+      "color": "White",
+      "design": "Checks",
+      "category": "T-Shirt",
+      "weather": "Summer",
+      "style": "Casual",
+      "confidence": 0.64,
+      "fabric": "Cotton",
+      "formality_level": 1
+    }
+  },
+  {
+    "image": "1.png",
+    "processing_time_ms": 773.76,
+    "overall_confidence": 0.6464,
+    "features": {
+      "colors": [
+        {
+          "name": "Blue",
+          "hex": "#242529",
+          "rgb": [
+            36,
+            37,
+            41
+          ],
+          "percentage": 95.2
+        }
+      ],
+      "dominant_color": "Blue",
+      "design": {
+        "pattern": "Floral",
+        "confidence": 0.1189
+      },
+      "category": {
+        "type": "Polo",
+        "confidence": 0.8331
+      },
+      "weather": {
+        "season": "All Season",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Sporty",
+        "confidence": 0.3781
+      },
+      "fabric": {
+        "type": null,
+        "confidence": 0.0
+      },
+      "formality": {
+        "level": 1,
+        "confidence": 0.9
+      }
+    },
+    "simplified_output": {
+      "color": "Blue",
+      "design": "Floral",
+      "category": "Polo",
+      "weather": "All Season",
+      "style": "Sporty",
+      "confidence": 0.65,
+      "fabric": null,
+      "formality_level": 1
+    }
+  },
+  {
+    "image": "2.png",
+    "processing_time_ms": 597.87,
+    "overall_confidence": 0.6464,
+    "features": {
+      "colors": [
+        {
+          "name": "Blue",
+          "hex": "#242529",
+          "rgb": [
+            36,
+            37,
+            41
+          ],
+          "percentage": 95.21
+        }
+      ],
+      "dominant_color": "Blue",
+      "design": {
+        "pattern": "Floral",
+        "confidence": 0.1189
+      },
+      "category": {
+        "type": "Polo",
+        "confidence": 0.8331
+      },
+      "weather": {
+        "season": "All Season",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Sporty",
+        "confidence": 0.3781
+      },
+      "fabric": {
+        "type": null,
+        "confidence": 0.0
+      },
+      "formality": {
+        "level": 1,
+        "confidence": 0.9
+      }
+    },
+    "simplified_output": {
+      "color": "Blue",
+      "design": "Floral",
+      "category": "Polo",
+      "weather": "All Season",
+      "style": "Sporty",
+      "confidence": 0.65,
+      "fabric": null,
+      "formality_level": 1
+    }
+  },
+  {
+    "image": "3.png",
+    "processing_time_ms": 648.85,
+    "overall_confidence": 0.571,
+    "features": {
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#111113",
+          "rgb": [
+            17,
+            17,
+            19
+          ],
+          "percentage": 99.3
+        }
+      ],
+      "dominant_color": "Black",
+      "design": {
+        "pattern": "Checks",
+        "confidence": 0.1135
+      },
+      "category": {
+        "type": "Activewear",
+        "confidence": 0.3576
+      },
+      "weather": {
+        "season": "All Season",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Sporty",
+        "confidence": 0.6027
+      },
+      "fabric": {
+        "type": "Polyester",
+        "confidence": 0.4
+      },
+      "formality": {
+        "level": 1,
+        "confidence": 0.9
+      }
+    },
+    "simplified_output": {
+      "color": "Black",
+      "design": "Checks",
+      "category": "Activewear",
+      "weather": "All Season",
+      "style": "Sporty",
+      "confidence": 0.57,
+      "fabric": "Polyester",
+      "formality_level": 1
+    }
+  },
+  {
+    "image": "4.png",
+    "processing_time_ms": 682.63,
+    "overall_confidence": 0.6422,
+    "features": {
+      "colors": [
+        {
+          "name": "Navy",
+          "hex": "#191c2a",
+          "rgb": [
+            25,
+            28,
+            42
+          ],
+          "percentage": 89.69
+        },
+        {
+          "name": "Blue",
+          "hex": "#0c0d13",
+          "rgb": [
+            12,
+            13,
+            19
+          ],
+          "percentage": 10.27
+        }
+      ],
+      "dominant_color": "Navy",
+      "design": {
+        "pattern": "Floral",
+        "confidence": 0.1244
+      },
+      "category": {
+        "type": "T-Shirt",
+        "confidence": 0.7551
+      },
+      "weather": {
+        "season": "Summer",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Minimalist",
+        "confidence": 0.7415
+      },
+      "fabric": {
+        "type": "Cotton",
+        "confidence": 0.4
+      },
+      "formality": {
+        "level": 2,
+        "confidence": 0.75
+      }
+    },
+    "simplified_output": {
+      "color": "Navy",
+      "design": "Floral",
+      "category": "T-Shirt",
+      "weather": "Summer",
+      "style": "Minimalist",
+      "confidence": 0.64,
+      "fabric": "Cotton",
+      "formality_level": 2
+    }
+  },
+  {
+    "image": "5.png",
+    "processing_time_ms": 577.39,
+    "overall_confidence": 0.5831,
+    "features": {
+      "colors": [
+        {
+          "name": "Black",
+          "hex": "#202123",
+          "rgb": [
+            32,
+            33,
+            35
+          ],
+          "percentage": 98.86
+        }
+      ],
+      "dominant_color": "Black",
+      "design": {
+        "pattern": "Floral",
+        "confidence": 0.1153
+      },
+      "category": {
+        "type": "Blouse",
+        "confidence": 0.7303
+      },
+      "weather": {
+        "season": "All Season",
+        "confidence": 0.75
+      },
+      "style": {
+        "label": "Casual",
+        "confidence": 0.3768
+      },
+      "fabric": {
+        "type": "Silk",
+        "confidence": 0.4
+      },
+      "formality": {
+        "level": 2,
+        "confidence": 0.75
+      }
+    },
+    "simplified_output": {
+      "color": "Black",
+      "design": "Floral",
+      "category": "Blouse",
+      "weather": "All Season",
+      "style": "Casual",
+      "confidence": 0.58,
+      "fabric": "Silk",
+      "formality_level": 2
+    }
+  }
+]

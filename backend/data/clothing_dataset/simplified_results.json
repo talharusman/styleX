@@ -1,0 +1,68 @@
+[
+  {
+    "image": "0.png",
+    "color": "White",
+    "design": "Checks",
+    "category": "T-Shirt",
+    "weather": "Summer",
+    "style": "Casual",
+    "confidence": 0.64,
+    "fabric": "Cotton",
+    "formality_level": 1
+  },
+  {
+    "image": "1.png",
+    "color": "Blue",
+    "design": "Floral",
+    "category": "Polo",
+    "weather": "All Season",
+    "style": "Sporty",
+    "confidence": 0.65,
+    "fabric": null,
+    "formality_level": 1
+  },
+  {
+    "image": "2.png",
+    "color": "Blue",
+    "design": "Floral",
+    "category": "Polo",
+    "weather": "All Season",
+    "style": "Sporty",
+    "confidence": 0.65,
+    "fabric": null,
+    "formality_level": 1
+  },
+  {
+    "image": "3.png",
+    "color": "Black",
+    "design": "Checks",
+    "category": "Activewear",
+    "weather": "All Season",
+    "style": "Sporty",
+    "confidence": 0.57,
+    "fabric": "Polyester",
+    "formality_level": 1
+  },
+  {
+    "image": "4.png",
+    "color": "Navy",
+    "design": "Floral",
+    "category": "T-Shirt",
+    "weather": "Summer",
+    "style": "Minimalist",
+    "confidence": 0.64,
+    "fabric": "Cotton",
+    "formality_level": 2
+  },
+  {
+    "image": "5.png",
+    "color": "Black",
+    "design": "Floral",
+    "category": "Blouse",
+    "weather": "All Season",
+    "style": "Casual",
+    "confidence": 0.58,
+    "fabric": "Silk",
+    "formality_level": 2
+  }
+]
