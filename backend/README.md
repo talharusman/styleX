@@ -92,29 +92,20 @@ Each developer should work in their assigned module:
 
 ## Setup
 
-1. Create virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   venv\Scripts\activate     # Windows
-   ```
+See the [root README](../README.md) for the full guide. Short version:
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+python scripts/setup.py          # creates .venv, installs deps, writes .env
+docker compose up -d mongo       # run from the repo root (MongoDB is required)
+.venv/Scripts/uvicorn app.main:app --reload   # Windows; use .venv/bin/uvicorn on Linux/Mac
+```
 
-3. Copy environment file:
-   ```bash
-   cp .env.example .env
-   ```
+The API refuses to start if MongoDB is unreachable. Check `http://localhost:8000/health`
+and `http://localhost:8000/docs`.
 
-4. Run the server:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+## API Endpoints
 
-## API Endpoints (To Be Implemented)
+See `/docs` (Swagger UI) for the authoritative, live list. Examples:
 
 - `POST /api/face/analyze` - Analyze face and extract skin features
 - `POST /api/cloth/analyze` - Extract clothing features

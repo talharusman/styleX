@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
         await connect_to_database()
         logger.info("✅ MongoDB database connected")
     except Exception as e:
-        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        logger.error(f"❌ {e}")
         raise
     
     # Start cache cleanup background task

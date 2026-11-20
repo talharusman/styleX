@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     MONGO_MIN_POOL_SIZE: int = 10
     MONGO_MAX_POOL_SIZE: int = 100
     MONGO_MAX_IDLE_TIME_MS: int = 30000
+    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = 5000  # fail fast if MongoDB is down
     
     # ========================================
     # API Keys - External Services

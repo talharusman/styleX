@@ -9,10 +9,19 @@ import logging
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _redact(url: str) -> str:
+    """Hide credentials in a MongoDB URL before logging/raising."""
+    if "@" in url:
+        scheme, rest = url.split("://", 1) if "://" in url else ("mongodb", url)
+        return f"{scheme}://***@{rest.rsplit('@', 1)[1]}"
+    return url
 
 # Global database client and database instances
 _client: Optional[AsyncIOMotorClient] = None
@@ -28,7 +37,7 @@ async def connect_to_database() -> None:
     global _client, _database
     
     try:
-        logger.info(f"Connecting to MongoDB at {settings.DATABASE_URL}...")
+        logger.info(f"Connecting to MongoDB at {_redact(settings.DATABASE_URL)}...")
         
         # Create MongoDB client with connection pooling
         _client = AsyncIOMotorClient(
@@ -36,6 +45,7 @@ async def connect_to_database() -> None:
             minPoolSize=settings.MONGO_MIN_POOL_SIZE,
             maxPoolSize=settings.MONGO_MAX_POOL_SIZE,
             maxIdleTimeMS=settings.MONGO_MAX_IDLE_TIME_MS,
+            serverSelectionTimeoutMS=settings.MONGO_SERVER_SELECTION_TIMEOUT_MS,
         )
         
         # Test connection
@@ -77,8 +87,19 @@ async def connect_to_database() -> None:
         )
         logger.info("✅ Beanie ODM initialized with all document models")
         
+    except (ServerSelectionTimeoutError, ConnectionFailure) as e:
+        if _client:
+            _client.close()
+            _client = None
+        raise RuntimeError(
+            f"Cannot reach MongoDB at {_redact(settings.DATABASE_URL)}. "
+            "StyleX requires a running MongoDB. Start one with "
+            "`docker compose up -d mongo` (or install MongoDB locally) and check "
+            "DATABASE_URL in backend/.env. "
+            f"Underlying error: {type(e).__name__}"
+        ) from e
     except Exception as e:
-        logger.error(f"❌ Failed to connect to MongoDB: {e}")
+        logger.error(f"❌ Failed to initialise database: {e}")
         raise
 
 
