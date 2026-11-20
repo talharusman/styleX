@@ -13,6 +13,9 @@ from .schemas import (
     SkinFeatures, ColorRecommendations, SeasonalType
 )
 from .service import FaceAnalysisService, get_face_analysis_service
+from .persistence import persist_face_analysis
+from app.auth.jwt_handler import get_current_user
+from app.auth.schemas import UserAuth
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,17 @@ router = APIRouter(
         500: {"description": "Internal server error"}
     }
 )
+
+
+def _raise_if_failed(response: FaceAnalysisResponse) -> None:
+    """Translate a failed analysis into an HTTP error carrying a machine-readable code."""
+    if response.success:
+        return
+    code = 503 if response.error_code == "analyzer_unavailable" else 422
+    raise HTTPException(
+        status_code=code,
+        detail={"message": response.error or "Face analysis failed", "code": response.error_code}
+    )
 
 
 @router.post(
@@ -43,7 +57,8 @@ router = APIRouter(
 )
 async def analyze_face(
     input_data: FaceAnalysisInput,
-    service: FaceAnalysisService = Depends(get_face_analysis_service)
+    service: FaceAnalysisService = Depends(get_face_analysis_service),
+    user: UserAuth = Depends(get_current_user)
 ) -> FaceAnalysisResponse:
     """
     Analyze a face image and extract skin features.
@@ -58,15 +73,10 @@ async def analyze_face(
     
     try:
         response = await service.analyze_face(input_data)
-        
-        if not response.success:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=response.error or "Face analysis failed"
-            )
-        
+        _raise_if_failed(response)
+        await persist_face_analysis(user.user_id, response)
         return response
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -85,7 +95,8 @@ async def analyze_face(
 )
 async def analyze_uploaded_face(
     file: UploadFile = File(..., description="Image file to analyze"),
-    service: FaceAnalysisService = Depends(get_face_analysis_service)
+    service: FaceAnalysisService = Depends(get_face_analysis_service),
+    user: UserAuth = Depends(get_current_user)
 ) -> FaceAnalysisResponse:
     """
     Analyze an uploaded face image file.
@@ -107,15 +118,10 @@ async def analyze_uploaded_face(
         
         # Analyze
         response = await service.analyze_face(input_data)
-        
-        if not response.success:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=response.error or "Face analysis failed"
-            )
-        
+        _raise_if_failed(response)
+        await persist_face_analysis(user.user_id, response)
         return response
-        
+
     except HTTPException:
         raise
     except Exception as e:

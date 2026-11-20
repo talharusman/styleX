@@ -166,6 +166,10 @@ class FaceAnalysisResponse(BaseModel):
         description="Processing time in milliseconds"
     )
     error: Optional[str] = None
+    error_code: Optional[str] = Field(
+        default=None,
+        description="Machine-readable failure reason: no_face_detected, insufficient_skin_pixels, invalid_image, analyzer_unavailable"
+    )
     
     class Config:
         json_schema_extra = {

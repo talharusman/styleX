@@ -112,7 +112,7 @@ cd frontend && npm run build && npm run lint     # lint currently reports errors
 - Sign-in is email/password only. Google sign-in is not available (needs real OAuth credentials and an endpoint); the old simulated demo login was removed.
 - Google Calendar OAuth needs real credentials and is not production-ready; OAuth state is held in memory.
 - Without API keys: weather returns mock data, chat is unavailable.
-- Onboarding selfie step is not yet wired to face analysis; several dashboard/recommendation/profile pieces use mock data or placeholder statistics.
+- Selfie analysis is wired to onboarding and saved to the profile, but it samples a few cheek points, so it is approximate (lighting and shadows matter) and not a medical or validated measurement. Wardrobe/recommendation, dashboard and profile statistics still use mock data or placeholders (next phases).
 - Frontend lint has outstanding errors; most backend tests are placeholders; there is no CI yet.
 
 These are being addressed phase by phase.

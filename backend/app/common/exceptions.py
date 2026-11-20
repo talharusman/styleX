@@ -181,12 +181,22 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         }
     )
     
+    # Structured errors: HTTPException(detail={"message": ..., "code": "no_face_detected"})
+    # keep the human message in `message` and expose the machine code as `details.error_code`.
+    if isinstance(exc.detail, dict):
+        message = str(exc.detail.get("message", "Request failed"))
+        details = {"error_code": exc.detail.get("code")}
+    else:
+        message = str(exc.detail)
+        details = None
+
     return JSONResponse(
         status_code=exc.status_code,
         content=ErrorResponse(
             success=False,
-            message=str(exc.detail),
-            code=exc.status_code
+            message=message,
+            code=exc.status_code,
+            details=details
         ).model_dump()
     )
 

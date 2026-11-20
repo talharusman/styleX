@@ -154,21 +154,22 @@ const useOnboardingStore = create(
           const response = await faceAnalysisApi.analyzeUpload(file);
           const data = response.data;
           
-          if (!data.success) {
-            throw new Error(data.message || 'Analysis failed');
+          if (!data.success || !data.skin_features) {
+            throw new Error(data.error || data.message || 'Analysis failed');
           }
           
           // Extract analysis results
-          const { skin_features, facial_features, color_recommendations, style_tips } = data;
+          const { skin_features, facial_features, color_recommendations } = data;
           
-          // Transform to expected format
+          // Never invent values: the backend only returns success for a real analysis,
+          // so every field below comes from the analysis itself.
           const faceAnalysis = {
-            skinTone: skin_features?.skin_depth || 'Medium',
-            skinToneHex: skin_features?.skin_hex || '#D4A574',
-            undertone: skin_features?.undertone || 'warm',
-            seasonalType: skin_features?.seasonal_type || 'autumn',
-            faceShape: facial_features?.face_shape || 'oval',
-            confidence: skin_features?.confidence || 0.8,
+            skinTone: skin_features.skin_depth,
+            skinToneHex: skin_features.skin_hex,
+            undertone: skin_features.undertone,
+            seasonalType: skin_features.seasonal_type,
+            faceShape: facial_features?.face_shape ?? null,
+            confidence: skin_features.confidence,
             // Raw data for API calls
             lab_l: skin_features?.lab_l,
             lab_a: skin_features?.lab_a,
@@ -179,7 +180,7 @@ const useOnboardingStore = create(
           set({
             faceAnalysis,
             skinFeatures: skin_features,
-            facialFeatures: facial_features,
+            facialFeatures: facial_features ?? null,
             colorRecommendations: color_recommendations,
             isAnalyzing: false,
           });

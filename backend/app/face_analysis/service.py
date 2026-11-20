@@ -17,10 +17,41 @@ from .schemas import (
     SkinFeatures, FacialFeatures, ColorRecommendations,
     SkinUndertone, SkinDepth, SeasonalType, FaceShape
 )
-from app.common.cache import cached, CacheNamespaces
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024   # 10 MB decoded
+MAX_IMAGE_SIDE = 1024                # downscale large photos before analysis
+MIN_SKIN_PIXELS = 60
+
+
+class FaceAnalysisError(Exception):
+    """Expected, user-facing analysis failure (never persisted as a result)."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _is_public_http_url(url: str) -> bool:
+    """Only allow http(s) URLs that resolve to public addresses (SSRF guard)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    try:
+        for info in socket.getaddrinfo(parsed.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+    except (socket.gaierror, ValueError):
+        return False
+    return True
 
 
 # Color palettes for different seasonal types
@@ -77,11 +108,12 @@ class FaceAnalysisService:
                 )
                 self._initialized = True
                 logger.info("Face analysis initialized successfully")
-            except ImportError:
-                logger.warning("MediaPipe not available, using mock analysis")
+            except (ImportError, AttributeError) as e:
+                # AttributeError: mediapipe installed without the legacy mp.solutions API
+                logger.error(f"MediaPipe Face Mesh unavailable: {e}")
+                self._face_mesh = None
                 self._initialized = True
     
-    @cached(CacheNamespaces.FACE_ANALYSIS, ttl=settings.CACHE_TTL_FACE_ANALYSIS)
     async def analyze_face(self, input_data: FaceAnalysisInput) -> FaceAnalysisResponse:
         """
         Analyze face image and extract features.
@@ -98,16 +130,19 @@ class FaceAnalysisService:
             self._ensure_initialized()
             
             # Load image
+            if self._face_mesh is None:
+                raise FaceAnalysisError(
+                    "analyzer_unavailable",
+                    "Face analysis is currently unavailable on the server."
+                )
+
             image = await self._load_image(input_data)
             if image is None:
-                return FaceAnalysisResponse(
-                    success=False,
-                    error="Failed to load image",
-                    skin_features=self._get_default_skin_features(),
-                    color_recommendations=self._get_default_recommendations(),
-                    processing_time_ms=0
+                raise FaceAnalysisError(
+                    "invalid_image",
+                    "The image could not be read. Upload a JPEG or PNG photo."
                 )
-            
+
             # Extract skin features
             skin_features = await self._extract_skin_features(image)
             
@@ -131,12 +166,22 @@ class FaceAnalysisService:
                 processing_time_ms=round(processing_time, 2)
             )
             
+        except FaceAnalysisError as e:
+            return FaceAnalysisResponse(
+                success=False,
+                error=e.message,
+                error_code=e.code,
+                skin_features=self._get_default_skin_features(),
+                color_recommendations=self._get_default_recommendations(),
+                processing_time_ms=round((time.time() - start_time) * 1000, 2)
+            )
         except Exception as e:
             logger.error(f"Face analysis error: {str(e)}")
             processing_time = (time.time() - start_time) * 1000
             return FaceAnalysisResponse(
                 success=False,
-                error=str(e),
+                error="Face analysis failed unexpectedly.",
+                error_code="analysis_failed",
                 skin_features=self._get_default_skin_features(),
                 color_recommendations=self._get_default_recommendations(),
                 processing_time_ms=round(processing_time, 2)
@@ -149,26 +194,38 @@ class FaceAnalysisService:
             import cv2
             
             if input_data.image_base64:
-                # Decode base64
-                image_data = base64.b64decode(input_data.image_base64)
-                pil_image = Image.open(BytesIO(image_data))
-                
+                payload = input_data.image_base64
+                if payload.startswith("data:") and "," in payload:
+                    payload = payload.split(",", 1)[1]  # strip data-URL prefix
+                image_data = base64.b64decode(payload)
             elif input_data.image_url:
-                # Fetch from URL
+                if not _is_public_http_url(input_data.image_url):
+                    raise FaceAnalysisError("invalid_image", "Image URL is not allowed.")
                 import httpx
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
                     response = await client.get(input_data.image_url)
-                    pil_image = Image.open(BytesIO(response.content))
+                    response.raise_for_status()
+                    image_data = response.content
             else:
                 return None
-            
+
+            if len(image_data) > MAX_IMAGE_BYTES:
+                raise FaceAnalysisError("invalid_image", "Image is too large (max 10 MB).")
+
+            from PIL import ImageOps
+            pil_image = Image.open(BytesIO(image_data))
+            pil_image = ImageOps.exif_transpose(pil_image)  # honour phone-camera rotation
+            pil_image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+
             # Convert to RGB if needed
             if pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
-            
+
             # Convert to numpy array
             return np.array(pil_image)
             
+        except FaceAnalysisError:
+            raise
         except Exception as e:
             logger.error(f"Failed to load image: {str(e)}")
             return None
@@ -178,11 +235,13 @@ class FaceAnalysisService:
         try:
             # Get face region
             skin_pixels = self._get_skin_pixels(image)
-            
-            if skin_pixels is None or len(skin_pixels) < 100:
-                logger.warning("Not enough skin pixels detected")
-                return self._get_default_skin_features()
-            
+
+            if skin_pixels is None or len(skin_pixels) < MIN_SKIN_PIXELS:
+                raise FaceAnalysisError(
+                    "insufficient_skin_pixels",
+                    "Could not sample enough skin from the photo. Use a clear, well-lit, front-facing selfie."
+                )
+
             # Calculate average skin color
             avg_rgb = np.mean(skin_pixels, axis=0).astype(int).tolist()
             
@@ -210,22 +269,29 @@ class FaceAnalysisService:
                 lab_b=round(lab[2], 2),
                 skin_rgb=avg_rgb,
                 skin_hex=skin_hex,
-                confidence=0.85
+                # Heuristic: how uniform the sampled cheek pixels are (not a model probability)
+                confidence=round(float(np.clip(1.0 - np.mean(np.std(skin_pixels, axis=0)) / 60.0, 0.3, 0.9)), 2)
             )
-            
+
+        except FaceAnalysisError:
+            raise
         except Exception as e:
             logger.error(f"Skin feature extraction error: {str(e)}")
-            return self._get_default_skin_features()
+            raise FaceAnalysisError("analysis_failed", "Skin analysis failed.") from e
     
     def _get_skin_pixels(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Extract skin region pixels using face detection"""
         try:
             if self._face_mesh:
                 # Use MediaPipe for accurate face region
-                import cv2
-                rgb_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                results = self._face_mesh.process(cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB))
-                
+                results = self._face_mesh.process(image)  # image is already RGB
+
+                if not results.multi_face_landmarks:
+                    raise FaceAnalysisError(
+                        "no_face_detected",
+                        "No face detected. Use a clear, well-lit, front-facing selfie with your face fully visible."
+                    )
+
                 if results.multi_face_landmarks:
                     landmarks = results.multi_face_landmarks[0]
                     h, w = image.shape[:2]
@@ -251,11 +317,10 @@ class FaceAnalysisService:
                     
                     return np.array(skin_pixels) if skin_pixels else None
             
-            # Fallback: sample from center of image
-            h, w = image.shape[:2]
-            center_region = image[h//3:2*h//3, w//3:2*w//3]
-            return center_region.reshape(-1, 3)
-            
+            return None
+
+        except FaceAnalysisError:
+            raise
         except Exception as e:
             logger.error(f"Error extracting skin pixels: {str(e)}")
             return None

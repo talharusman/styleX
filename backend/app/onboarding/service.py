@@ -79,6 +79,16 @@ COLOR_RECOMMENDATIONS = {
 }
 
 
+# Face-analysis skin depth -> onboarding SkinTone
+_DEPTH_TO_TONE = {
+    "fair": SkinTone.FAIR,
+    "light": SkinTone.LIGHT,
+    "medium": SkinTone.MEDIUM,
+    "tan": SkinTone.TAN,
+    "deep": SkinTone.DARK,
+}
+
+
 class OnboardingService:
     """Service for managing user onboarding with MongoDB"""
     
@@ -200,7 +210,10 @@ class OnboardingService:
         
         if step == OnboardingStep.SELFIE:
             selfie_data = SelfieStepData(**data)
-            return selfie_data.model_dump()
+            dumped = selfie_data.model_dump()
+            # Never persist the raw selfie in the onboarding document
+            dumped.pop("image_base64", None)
+            return dumped
         
         elif step == OnboardingStep.BODY_TYPE:
             body_data = BodyTypeStepData(**data)
@@ -325,28 +338,43 @@ class OnboardingService:
     
     async def analyze_selfie(
         self,
+        user_id: str,
         image_base64: Optional[str] = None,
         image_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Analyze a selfie to detect face features
-        
-        This would integrate with the face_analysis module for actual analysis.
-        Currently returns a placeholder response.
+        Analyze a selfie with the face-analysis module and persist the result
+        to the user's profile. Failures (no face, bad image) are reported as
+        success=False and nothing is stored.
         """
-        # TODO: Integrate with face_analysis module
-        # This would use the existing face_analysis service
-        
+        from app.face_analysis.service import get_face_analysis_service
+        from app.face_analysis.schemas import FaceAnalysisInput
+        from app.face_analysis.persistence import persist_face_analysis
+
+        response = await get_face_analysis_service().analyze_face(
+            FaceAnalysisInput(image_base64=image_base64, image_url=image_url)
+        )
+
+        if not response.success:
+            return {
+                "success": False,
+                "face_detected": False,
+                "confidence": 0.0,
+                "message": response.error or "Face analysis failed",
+                "error_code": response.error_code,
+            }
+
+        await persist_face_analysis(user_id, response)
+
+        sf = response.skin_features
         return {
             "success": True,
             "face_detected": True,
-            "face_shape": "oval",
-            "skin_tone": SkinTone.MEDIUM,
-            "undertone": SkinUndertone.WARM,
-            "hair_color": "brown",
-            "eye_color": "brown",
-            "confidence": 0.85,
-            "message": "Face analysis complete"
+            "face_shape": response.facial_features.face_shape.value if response.facial_features else None,
+            "skin_tone": _DEPTH_TO_TONE.get(sf.skin_depth.value),
+            "undertone": SkinUndertone(sf.undertone.value),
+            "confidence": sf.confidence,
+            "message": "Face analysis complete",
         }
     
     async def reset_progress(self, user_id: str):
