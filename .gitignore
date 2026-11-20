@@ -19,3 +19,4 @@ frontend/dist/
 # OS / IDE
 .DS_Store
 Thumbs.db
+pip_install.log
