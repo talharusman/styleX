@@ -109,7 +109,7 @@ cd frontend && npm run build && npm run lint     # lint currently reports errors
 - **Fabric detection is placeholder logic**, not a trained model.
 - Face/skin analysis is an approximate colour-analysis heuristic, not a medical or clinically validated tool.
 - Recommendation scoring is rule-based and has not been validated for quality.
-- The frontend auth page currently offers only a simulated demo Google sign-in; email/password UI is planned.
+- Sign-in is email/password only. Google sign-in is not available (needs real OAuth credentials and an endpoint); the old simulated demo login was removed.
 - Google Calendar OAuth needs real credentials and is not production-ready; OAuth state is held in memory.
 - Without API keys: weather returns mock data, chat is unavailable.
 - Onboarding selfie step is not yet wired to face analysis; several dashboard/recommendation/profile pieces use mock data or placeholder statistics.

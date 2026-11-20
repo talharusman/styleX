@@ -165,6 +165,10 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
         # Verify session exists and is active
         session = await repo.get_session_by_token(request.refresh_token)
         if not session:
+            # A correctly signed refresh token with no active session was already
+            # rotated or revoked: treat as token theft/reuse and end all sessions.
+            await repo.invalidate_all_user_sessions(token_data.user_id)
+            logger.warning(f"Refresh token reuse detected for user {token_data.user_id}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has been revoked"

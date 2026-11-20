@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { authApi, profileApi, parseApiError } from '../api';
+import { authApi, parseApiError } from '../api';
+import useOnboardingStore from './onboardingStore';
 
 /**
  * Authentication Store
@@ -9,7 +10,6 @@ import { authApi, profileApi, parseApiError } from '../api';
  * Backend Endpoints Used:
  * - POST /api/auth/register - Register new user
  * - POST /api/auth/login - Login with email/password
- * - POST /api/auth/google - Google OAuth login
  * - POST /api/auth/refresh - Refresh access token
  * - GET /api/auth/me - Get current user
  * - POST /api/auth/logout - Logout user
@@ -24,6 +24,7 @@ const useAuthStore = create(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitialized: false,
       error: null,
 
       // Actions
@@ -44,27 +45,19 @@ const useAuthStore = create(
       },
 
       /**
-       * Register a new user
-       * POST /api/auth/register
+       * Register a new user, then sign them in
+       * POST /api/auth/register -> POST /api/auth/login
        */
       register: async (email, password, name) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await authApi.register({ email, password, name });
-          const { user } = response.data;
-          
-          set({
-            user,
-            isLoading: false,
-          });
-          
-          // After registration, user needs to login
-          return { success: true, user, needsLogin: true };
+          await authApi.register({ email, password, name });
         } catch (error) {
           const { message } = parseApiError(error);
           set({ error: message, isLoading: false });
           return { success: false, error: message };
         }
+        return get().loginWithEmail(email, password);
       },
 
       /**
@@ -92,6 +85,8 @@ const useAuthStore = create(
             localStorage.setItem('userId', user.user_id);
           }
           
+          useOnboardingStore.getState().claimForUser(user?.user_id);
+          
           set({
             user,
             token: access_token,
@@ -102,66 +97,11 @@ const useAuthStore = create(
           
           return { success: true, user };
         } catch (error) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('refreshToken');
           const { message } = parseApiError(error);
           set({ error: message, isLoading: false });
           return { success: false, error: message };
-        }
-      },
-
-      /**
-       * Login with Google OAuth token
-       * POST /api/auth/google (or use standard login flow)
-       * Note: Backend may need Google OAuth implementation
-       */
-      login: async (googleToken) => {
-        set({ isLoading: true, error: null });
-        try {
-          // Try Google OAuth endpoint first
-          const response = await authApi.googleAuth(googleToken);
-          const { access_token, refresh_token, user } = response.data;
-          
-          localStorage.setItem('authToken', access_token);
-          if (refresh_token) {
-            localStorage.setItem('refreshToken', refresh_token);
-          }
-          if (user?.user_id) {
-            localStorage.setItem('userId', user.user_id);
-          }
-          
-          set({
-            user,
-            token: access_token,
-            refreshToken: refresh_token,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-          
-          return { success: true, user };
-        } catch (error) {
-          // If Google OAuth isn't implemented, fall back to demo mode
-          // ASSUMPTION: In production, this would be properly implemented
-          console.warn('Google OAuth not available, using demo mode');
-          
-          // Demo user for development
-          const demoUser = {
-            user_id: 'demo_user_' + Date.now(),
-            email: 'demo@stylex.com',
-            name: 'Demo User',
-            roles: ['user'],
-            onboardingCompleted: false,
-          };
-          
-          localStorage.setItem('authToken', 'demo_token_' + Date.now());
-          localStorage.setItem('userId', demoUser.user_id);
-          
-          set({
-            user: demoUser,
-            token: 'demo_token',
-            isAuthenticated: true,
-            isLoading: false,
-          });
-          
-          return { success: true, user: demoUser };
         }
       },
 
@@ -196,8 +136,8 @@ const useAuthStore = create(
       fetchUser: async () => {
         const token = localStorage.getItem('authToken');
         if (!token) {
-          set({ isAuthenticated: false });
-          return;
+          set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isInitialized: true });
+          return { success: false };
         }
 
         set({ isLoading: true });
@@ -211,14 +151,15 @@ const useAuthStore = create(
           
           set({
             user,
-            token,
+            token: localStorage.getItem('authToken'),
             isAuthenticated: true,
             isLoading: false,
+            isInitialized: true,
           });
           
           return { success: true, user };
-        } catch (error) {
-          // Token is invalid or expired
+        } catch {
+          // Token is invalid or expired (the API client already tried to refresh it)
           localStorage.removeItem('authToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('userId');
@@ -228,6 +169,7 @@ const useAuthStore = create(
             refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
+            isInitialized: true,
           });
           return { success: false };
         }
@@ -258,7 +200,7 @@ const useAuthStore = create(
           });
           
           return { success: true };
-        } catch (error) {
+        } catch {
           // Refresh failed, user needs to re-login
           get().logout();
           return { success: false };

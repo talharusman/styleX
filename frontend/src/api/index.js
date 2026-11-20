@@ -32,41 +32,62 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Single in-flight refresh shared by all concurrent 401s. Refresh tokens rotate
+// (each is single-use), so parallel refreshes would trip reuse detection.
+let refreshPromise = null;
+
+const clearSession = () => {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('userId');
+  localStorage.removeItem('auth-storage');
+};
+
+const refreshTokens = () => {
+  if (!refreshPromise) {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) return Promise.reject(new Error('No refresh token'));
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/api/auth/refresh`, { refresh_token: refreshToken })
+      .then(({ data }) => {
+        localStorage.setItem('authToken', data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem('refreshToken', data.refresh_token);
+        }
+        return data.access_token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
 // Response interceptor - Handle errors globally and token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
-    // Handle 401 Unauthorized - attempt token refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthEndpoint = originalRequest?.url?.startsWith('/api/auth/');
+
+    // 401 on a normal request: try to refresh once, then retry.
+    // Auth endpoints (login/register/refresh) are excluded: a wrong password is not an expired session.
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
-      
+
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-          
-          const { access_token, refresh_token } = response.data;
-          localStorage.setItem('authToken', access_token);
-          if (refresh_token) {
-            localStorage.setItem('refreshToken', refresh_token);
-          }
-          
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return api(originalRequest);
-        }
+        const accessToken = await refreshTokens();
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - clear tokens and redirect to auth
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/auth';
+        clearSession();
+        if (window.location.pathname !== '/auth') {
+          window.location.href = '/auth';
+        }
         return Promise.reject(refreshError);
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -94,14 +115,6 @@ export const authApi = {
    * @returns {Object} { success, access_token, refresh_token, token_type, expires_in }
    */
   login: (data) => api.post('/api/auth/login', data),
-
-  /**
-   * Authenticate with Google OAuth token
-   * Note: This endpoint may need backend implementation if using Google OAuth
-   * For now, using the standard login flow
-   * @param {string} googleToken - Google OAuth token
-   */
-  googleAuth: (googleToken) => api.post('/api/auth/google', { token: googleToken }),
 
   /**
    * Refresh access token

@@ -25,6 +25,7 @@ const useOnboardingStore = create(
       
       // Step 1: Auth completed
       authCompleted: false,
+      ownerId: null,
       
       // Step 2: Selfie data from face analysis
       selfieData: null,
@@ -122,6 +123,16 @@ const useOnboardingStore = create(
         const { totalSteps } = get();
         if (step >= 1 && step <= totalSteps) {
           set({ currentStep: step });
+        }
+      },
+
+      // Tie locally persisted onboarding progress to one account.
+      // A different user logging in on this browser starts clean.
+      claimForUser: (userId) => {
+        if (!userId) return;
+        if (get().ownerId !== userId) {
+          get().resetOnboarding();
+          set({ ownerId: userId });
         }
       },
 
@@ -356,9 +367,9 @@ const useOnboardingStore = create(
 
       // Check if onboarding is complete
       isComplete: () => {
-        const { authCompleted, faceAnalysis, bodyType, stylePreferences } = get();
+        // Authentication itself is enforced by the route guards.
+        const { faceAnalysis, bodyType, stylePreferences } = get();
         return (
-          authCompleted &&
           faceAnalysis !== null &&
           bodyType !== null &&
           stylePreferences.length > 0
@@ -417,6 +428,7 @@ const useOnboardingStore = create(
       partialize: (state) => ({
         currentStep: state.currentStep,
         authCompleted: state.authCompleted,
+        ownerId: state.ownerId,
         faceAnalysis: state.faceAnalysis,
         skinFeatures: state.skinFeatures,
         colorRecommendations: state.colorRecommendations,

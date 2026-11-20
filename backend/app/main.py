@@ -55,6 +55,14 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+
+    if settings.ENVIRONMENT == "production" and (
+        settings.SECRET_KEY.startswith("your-super-secret-key") or len(settings.SECRET_KEY) < 32
+    ):
+        raise RuntimeError(
+            "Refusing to start in production with the default/short SECRET_KEY. "
+            "Set a random SECRET_KEY of at least 32 characters."
+        )
     
     # Connect to MongoDB
     try:

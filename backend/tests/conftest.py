@@ -4,6 +4,12 @@ Pytest Configuration and Fixtures
 Shared fixtures for all tests.
 """
 
+import os
+
+# Tests must never touch the development database
+os.environ["DATABASE_NAME"] = "stylex_test"
+os.environ["ENVIRONMENT"] = "development"
+
 import pytest
 import asyncio
 from typing import Generator, AsyncGenerator

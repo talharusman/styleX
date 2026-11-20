@@ -4,6 +4,7 @@ JWT Token Handler
 Creates and verifies JWT tokens for authentication.
 """
 
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 import logging
@@ -47,6 +48,7 @@ def create_access_token(
     to_encode.update({
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "jti": secrets.token_urlsafe(16),
         "token_type": "access"
     })
     
@@ -83,6 +85,7 @@ def create_refresh_token(
     to_encode.update({
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "jti": secrets.token_urlsafe(16),  # unique per token so rotation never reissues the same string
         "token_type": "refresh"
     })
     
@@ -154,6 +157,13 @@ async def get_current_user(
         )
     
     token_data = verify_token(credentials.credentials)
+    if token_data.token_type != "access":
+        # A refresh token must never be accepted as an access token
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
     
     return UserAuth(
         user_id=token_data.user_id,
@@ -175,6 +185,8 @@ async def get_current_user_optional(
     
     try:
         token_data = verify_token(credentials.credentials)
+        if token_data.token_type != "access":
+            return None
         return UserAuth(
             user_id=token_data.user_id,
             email=token_data.email,
