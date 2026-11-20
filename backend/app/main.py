@@ -37,6 +37,7 @@ from app.settings.router import router as settings_router
 from app.face_analysis.router import router as face_analysis_router
 from app.cloth_analysis.router import router as cloth_analysis_router
 from app.recommendation.router import router as recommendation_router
+from app.wardrobe.router import router as wardrobe_router
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +232,9 @@ app.include_router(cloth_analysis_router)
 
 # Recommendations
 app.include_router(recommendation_router)
+
+# Wardrobe (user clothing items, ranking, saved outfits)
+app.include_router(wardrobe_router)
 
 
 # ========================================

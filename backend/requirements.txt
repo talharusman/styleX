@@ -54,7 +54,7 @@ email-validator>=2.0.0
 python-dotenv>=1.0.0
 
 # CLIP (optional, used when USE_CLIP=true; needs git)
-# git+https://github.com/openai/CLIP.git
+# After installing requirements: pip install ftfy regex tqdm git+https://github.com/openai/CLIP.git
 
 # Testing
 pytest>=7.4.0

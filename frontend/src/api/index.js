@@ -500,7 +500,7 @@ export const onboardingApi = {
    * POST /api/onboarding/step/complete/{userId}
    * @param {string} userId - User ID
    */
-  complete: (userId) => api.post(`/api/onboarding/step/complete/${userId}`),
+  complete: (userId) => api.post(`/api/onboarding/step/complete/${userId}`, {}),
 };
 
 // =============================================================================
@@ -721,4 +721,43 @@ export const parseApiError = (error) => {
     code: 0,
     details: null,
   };
+};
+
+// =============================================================================
+// WARDROBE API (/api/wardrobe)
+// Per-user clothing items, ranking against the stored skin profile, saved outfits.
+// All endpoints require authentication and only return the caller's data.
+// Used on: /wardrobe
+// =============================================================================
+export const wardrobeApi = {
+  /** POST /api/wardrobe/items (multipart) - upload + analyze a clothing photo */
+  addItem: (file, name) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (name) form.append('name', name);
+    return api.post('/api/wardrobe/items', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000, // first analysis can load models
+    });
+  },
+  /** GET /api/wardrobe/items?category=&favorite=&needs_review= */
+  listItems: (params = {}) => api.get('/api/wardrobe/items', { params }),
+  /** PATCH /api/wardrobe/items/{id} - correct analysis results */
+  updateItem: (id, data) => api.patch(`/api/wardrobe/items/${id}`, data),
+  /** POST /api/wardrobe/items/{id}/favorite - toggle */
+  toggleFavorite: (id) => api.post(`/api/wardrobe/items/${id}/favorite`),
+  /** DELETE /api/wardrobe/items/{id} */
+  deleteItem: (id) => api.delete(`/api/wardrobe/items/${id}`),
+  /** GET item photo as a Blob (the image endpoint is authenticated) */
+  getImage: (imageUrl) => api.get(imageUrl, { responseType: 'blob' }),
+  /** GET /api/wardrobe/recommendations - ranked wardrobe */
+  recommendations: (params = {}) => api.get('/api/wardrobe/recommendations', { params }),
+  /** GET /api/wardrobe/outfits - complete outfit combinations */
+  outfits: (params = {}) => api.get('/api/wardrobe/outfits', { params }),
+  /** POST /api/wardrobe/outfits/saved */
+  saveOutfit: (data) => api.post('/api/wardrobe/outfits/saved', data),
+  /** GET /api/wardrobe/outfits/saved */
+  savedOutfits: () => api.get('/api/wardrobe/outfits/saved'),
+  /** DELETE /api/wardrobe/outfits/saved/{id} */
+  deleteSavedOutfit: (id) => api.delete(`/api/wardrobe/outfits/saved/${id}`),
 };

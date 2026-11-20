@@ -270,7 +270,8 @@ async def get_me(user: UserAuth = Depends(get_current_user)) -> AuthResponse:
             user_id=str(db_user.id),
             email=db_user.email,
             name=db_user.name,
-            roles=db_user.roles
+            roles=db_user.roles,
+            onboarding_completed=db_user.onboarding_completed
         )
     )
 

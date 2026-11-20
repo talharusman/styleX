@@ -286,7 +286,7 @@ async def submit_style_step(
 )
 async def complete_onboarding(
     user_id: str,
-    data: CompleteStepData,
+    data: Optional[CompleteStepData] = None,
     service: OnboardingService = Depends(get_onboarding_service),
     user: UserAuth = Depends(get_current_user)
 ) -> OnboardingStepResponse:
@@ -300,7 +300,7 @@ async def complete_onboarding(
     result = await service.update_step(
         user_id=user_id,
         step=OnboardingStep.COMPLETE,
-        data=data.model_dump()
+        data=(data or CompleteStepData()).model_dump()
     )
     
     return OnboardingStepResponse(

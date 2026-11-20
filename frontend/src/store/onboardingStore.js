@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { onboardingApi, faceAnalysisApi, profileApi, parseApiError } from '../api';
+import { onboardingApi, faceAnalysisApi, parseApiError } from '../api';
+import { buildStepPayloads } from './onboardingMapping';
 
 /**
  * Onboarding Store
@@ -26,6 +27,7 @@ const useOnboardingStore = create(
       // Step 1: Auth completed
       authCompleted: false,
       ownerId: null,
+      completed: false, // true once the BACKEND has accepted completion
       
       // Step 2: Selfie data from face analysis
       selfieData: null,
@@ -132,9 +134,12 @@ const useOnboardingStore = create(
         if (!userId) return;
         if (get().ownerId !== userId) {
           get().resetOnboarding();
-          set({ ownerId: userId });
+          set({ ownerId: userId, completed: false });
         }
       },
+
+      // The server is the source of truth for "has this account finished onboarding"
+      syncCompletion: (completed) => set({ completed: !!completed }),
 
       // Step 1: Auth
       completeAuth: () => {
@@ -273,74 +278,32 @@ const useOnboardingStore = create(
       completeOnboarding: async () => {
         const userId = localStorage.getItem('userId');
         if (!userId) {
-          return { success: false, error: 'User not authenticated' };
+          return { success: false, error: 'You are signed out. Please sign in again.' };
         }
-        
+
         set({ isSaving: true, error: null });
-        
+
+        const payloads = buildStepPayloads(get());
+        if (!payloads.skin) {
+          const error = 'Your skin analysis is missing. Go back and upload a selfie.';
+          set({ error, isSaving: false });
+          return { success: false, error };
+        }
+
         try {
-          const onboardingData = get().getOnboardingData();
-          
-          // Submit skin tone if we have face analysis
-          if (onboardingData.faceAnalysis?.undertone) {
-            try {
-              await onboardingApi.submitSkinTone(userId, {
-                skin_tone: onboardingData.faceAnalysis.undertone,
-              });
-            } catch (e) {
-              console.log('Skin tone sync optional');
-            }
-          }
-          
-          // Submit body type
-          if (onboardingData.bodyType) {
-            try {
-              await onboardingApi.submitBodyType(userId, {
-                body_type: onboardingData.bodyType,
-              });
-            } catch (e) {
-              console.log('Body type sync optional');
-            }
-          }
-          
-          // Submit style preferences
-          if (onboardingData.stylePreferences?.length) {
-            try {
-              await onboardingApi.submitStyle(userId, {
-                style_preference: onboardingData.stylePreferences[0],
-                color_preferences: onboardingData.favoriteColors,
-              });
-            } catch (e) {
-              console.log('Style sync optional');
-            }
-          }
-          
-          // Complete onboarding
-          try {
-            await onboardingApi.complete(userId);
-          } catch (e) {
-            console.log('Complete endpoint optional');
-          }
-          
-          // Update profile with all data
-          try {
-            await profileApi.updateProfile(userId, {
-              body_type: onboardingData.bodyType,
-              skin_tone: onboardingData.faceAnalysis?.undertone,
-              style_preference: onboardingData.stylePreferences?.[0],
-              height: onboardingData.height,
-              onboarding_complete: true,
-            });
-          } catch (e) {
-            console.log('Profile update optional');
-          }
-          
-          set({ isSaving: false, syncedWithBackend: true });
+          // Order matters little to the backend, but every call must succeed:
+          // a failed sync means the profile would be incomplete.
+          await onboardingApi.submitSkinTone(userId, payloads.skin);
+          if (payloads.body) await onboardingApi.submitBodyType(userId, payloads.body);
+          if (payloads.style) await onboardingApi.submitStyle(userId, payloads.style);
+          await onboardingApi.complete(userId);
+
+          set({ isSaving: false, syncedWithBackend: true, completed: true });
           return { success: true };
         } catch (error) {
-          const { message } = parseApiError(error);
+          const { message, details } = parseApiError(error);
           set({ error: message, isSaving: false });
-          return { success: false, error: message };
+          return { success: false, error: message, code: details?.error_code ?? null };
         }
       },
 
@@ -366,16 +329,8 @@ const useOnboardingStore = create(
         });
       },
 
-      // Check if onboarding is complete
-      isComplete: () => {
-        // Authentication itself is enforced by the route guards.
-        const { faceAnalysis, bodyType, stylePreferences } = get();
-        return (
-          faceAnalysis !== null &&
-          bodyType !== null &&
-          stylePreferences.length > 0
-        );
-      },
+      // Complete only once the backend accepted it (never inferred from local data)
+      isComplete: () => get().completed,
 
       // Get all onboarding data for API submission
       getOnboardingData: () => {
@@ -430,6 +385,7 @@ const useOnboardingStore = create(
         currentStep: state.currentStep,
         authCompleted: state.authCompleted,
         ownerId: state.ownerId,
+        completed: state.completed,
         faceAnalysis: state.faceAnalysis,
         skinFeatures: state.skinFeatures,
         colorRecommendations: state.colorRecommendations,

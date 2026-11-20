@@ -15,6 +15,7 @@ class UserAuth(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
     roles: List[str] = Field(default_factory=lambda: ["user"])
+    onboarding_completed: bool = False
     
     class Config:
         json_schema_extra = {

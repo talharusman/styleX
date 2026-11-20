@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     IMAGE_SIZE: int = 224
     USE_CLIP: bool = True
     MODEL_PATH: str = "models/"
+    UPLOAD_DIR: str = "uploads"  # user wardrobe photos (relative to backend/)
     
     # ========================================
     # Rate Limiting

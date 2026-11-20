@@ -30,33 +30,20 @@ const StepComplete = () => {
 
   const handleComplete = async () => {
     setError(null);
-    
-    try {
-      // Complete onboarding - this saves all data to backend
-      const result = await completeOnboarding();
-      
-      if (!result.success) {
-        // Even if backend sync fails, we can still proceed with local data
-        console.warn('Onboarding sync warning:', result.error);
-      }
-      
-      // Update auth store to reflect onboarding completion
-      updateUser({ onboardingCompleted: true });
-      
-      // Reset onboarding store and navigate to dashboard
-      resetOnboarding();
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('Failed to complete onboarding:', err);
-      setError('Something went wrong. Please try again.');
-      
-      // Still navigate to dashboard on error - data is saved locally
-      setTimeout(() => {
-        updateUser({ onboardingCompleted: true });
-        resetOnboarding();
-        navigate('/dashboard');
-      }, 2000);
+
+    const result = await completeOnboarding();
+
+    if (!result.success) {
+      // Stay on this step: the account is only finished once the server accepts it.
+      setError(result.error || 'Something went wrong. Please try again.');
+      return;
     }
+
+    updateUser({ onboardingCompleted: true });
+    // Clear the locally cached selfie analysis/answers (they are saved on the server now).
+    // `completed` is kept, so the route guards let the user into the app.
+    resetOnboarding();
+    navigate('/dashboard');
   };
 
   const onboardingData = getOnboardingData();

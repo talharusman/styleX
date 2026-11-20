@@ -79,6 +79,13 @@ COLOR_RECOMMENDATIONS = {
 }
 
 
+# Onboarding StylePreference -> profile StyleType (the profile uses the wardrobe vocabulary)
+_STYLE_TO_PROFILE = {
+    "casual": "casual", "formal": "formal", "business_casual": "business",
+    "streetwear": "streetwear", "minimalist": "minimalist", "bohemian": "bohemian",
+    "classic": "formal", "trendy": "casual", "sporty": "sporty", "vintage": "vintage",
+}
+
 # Face-analysis skin depth -> onboarding SkinTone
 _DEPTH_TO_TONE = {
     "fair": SkinTone.FAIR,
@@ -177,7 +184,9 @@ class OnboardingService:
         
         # Check if onboarding is complete
         is_complete = step == OnboardingStep.COMPLETE
-        
+        if is_complete:
+            await self._finalize(user_id, progress.step_data)
+
         # Save to database
         updates = {
             "current_step": progress.current_step.value,
@@ -201,6 +210,58 @@ class OnboardingService:
             "is_complete": is_complete
         }
     
+    async def _finalize(self, user_id: str, step_data: Dict[str, Any]) -> None:
+        """
+        Completion gate + profile sync.
+
+        Onboarding can only be completed after a successful selfie analysis (so the
+        profile always has real skin features), and the chosen body type / style
+        preferences are copied onto the profile that recommendations read.
+        """
+        from fastapi import HTTPException
+        from app.database.models import UserProfile
+
+        uid = PydanticObjectId(user_id)
+        profile = await UserProfile.find_one(UserProfile.user_id == uid)
+        if profile is None or profile.skin_features is None or profile.skin_features.undertone is None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Analyze your selfie before finishing onboarding",
+                    "code": "profile_incomplete",
+                },
+            )
+
+        updates: Dict[str, Any] = {"updated_at": datetime.utcnow()}
+
+        body = step_data.get(OnboardingStep.BODY_TYPE.value)
+        if body:
+            updates["body_measurements"] = {
+                "height_cm": body.get("height"),
+                "weight_kg": body.get("weight"),
+                "chest_cm": body.get("chest"),
+                "waist_cm": body.get("waist"),
+                "hip_cm": body.get("hips"),
+                "body_type": body.get("body_type"),
+            }
+
+        style = step_data.get(OnboardingStep.STYLE.value)
+        if style:
+            def to_profile(values):
+                mapped = [_STYLE_TO_PROFILE.get(v) for v in values]
+                return list(dict.fromkeys(m for m in mapped if m))
+
+            primary = to_profile([style.get("primary_style")])
+            if primary:
+                updates["style_preferences.primary_style"] = primary[0]
+            updates["style_preferences.secondary_styles"] = [
+                s for s in to_profile(style.get("secondary_styles", [])) if not primary or s != primary[0]
+            ]
+            updates["style_preferences.favorite_colors"] = style.get("favorite_colors", [])
+            updates["style_preferences.avoided_colors"] = style.get("avoid_colors", [])
+
+        await profile.update({"$set": updates})
+
     async def _process_step_data(
         self,
         step: OnboardingStep,

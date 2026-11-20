@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi, parseApiError } from '../api';
 import useOnboardingStore from './onboardingStore';
+import useWardrobeStore from './wardrobeStore';
 
 /**
  * Authentication Store
@@ -86,6 +87,7 @@ const useAuthStore = create(
           }
           
           useOnboardingStore.getState().claimForUser(user?.user_id);
+          useOnboardingStore.getState().syncCompletion(user?.onboarding_completed);
           
           set({
             user,
@@ -119,6 +121,7 @@ const useAuthStore = create(
           localStorage.removeItem('authToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('userId');
+          useWardrobeStore.getState().reset(); // never show one user's wardrobe to the next
           set({
             user: null,
             token: null,
@@ -149,6 +152,9 @@ const useAuthStore = create(
             localStorage.setItem('userId', user.user_id);
           }
           
+          useOnboardingStore.getState().claimForUser(user?.user_id);
+          useOnboardingStore.getState().syncCompletion(user?.onboarding_completed);
+
           set({
             user,
             token: localStorage.getItem('authToken'),

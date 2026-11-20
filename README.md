@@ -96,6 +96,12 @@ RuntimeError: Cannot reach MongoDB at mongodb://localhost:27017. StyleX requires
 
 Start MongoDB (`docker compose up -d mongo`) and re-check `DATABASE_URL`.
 
+## Using the wardrobe
+
+1. Register, then finish onboarding (the selfie analysis is required for recommendations).
+2. Open **Wardrobe** in the header, click **Add clothing** and upload photos of single garments on a plain background.
+3. Check items marked **Review**, then use the **Recommended** and **Outfits** tabs. Photos are stored under `backend/uploads/` (gitignored) and only served to their owner.
+
 ## Tests and builds
 
 ```bash
@@ -111,8 +117,9 @@ cd frontend && npm run build && npm run lint     # lint currently reports errors
 - Recommendation scoring is rule-based and has not been validated for quality.
 - Sign-in is email/password only. Google sign-in is not available (needs real OAuth credentials and an endpoint); the old simulated demo login was removed.
 - Google Calendar OAuth needs real credentials and is not production-ready; OAuth state is held in memory.
+- **Clothing analysis is approximate.** Category/style come from CLIP zero-shot classification (install CLIP, see `backend/scripts/download_models.py`); without CLIP they are close to random. Low-confidence items are flagged "Review" and can be corrected by the user. Fabric is a placeholder guess. Accuracy on real clothing photos has not been measured.
 - Without API keys: weather returns mock data, chat is unavailable.
-- Selfie analysis is wired to onboarding and saved to the profile, but it samples a few cheek points, so it is approximate (lighting and shadows matter) and not a medical or validated measurement. Wardrobe/recommendation, dashboard and profile statistics still use mock data or placeholders (next phases).
+- Selfie analysis is wired to onboarding and saved to the profile, but it samples a few cheek points, so it is approximate (lighting and shadows matter) and not a medical or validated measurement. Dashboard and profile statistics still use mock data or placeholders (next phases).
 - Frontend lint has outstanding errors; most backend tests are placeholders; there is no CI yet.
 
 These are being addressed phase by phase.

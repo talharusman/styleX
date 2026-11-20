@@ -150,8 +150,12 @@ class ClothingFeatures(BaseModel):
     weather: WeatherType = WeatherType.ALL_SEASON
     style: StyleType = StyleType.CASUAL
     formality_level: int = Field(default=3, ge=1, le=10)
-    fabric_type: Optional[str] = None
+    fabric_type: Optional[str] = None  # placeholder-quality: not reliable ML output
     confidence_scores: Dict[str, float] = Field(default_factory=dict)
+    subcategory: Optional[str] = None  # e.g. "t-shirt", "jeans" (category is the coarse group)
+    gender: str = "unisex"
+    needs_review: bool = False  # classifier was unsure: user should confirm category/style
+    user_corrected: bool = False  # fields were edited by the user
 
 
 class NotificationSettings(BaseModel):
@@ -346,6 +350,7 @@ class ClothingItem(Document):
     
     # Images
     image_url: str = ""
+    image_path: Optional[str] = None  # server-side file (never exposed directly)
     image_base64: Optional[str] = None
     thumbnail_url: Optional[str] = None
     

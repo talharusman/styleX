@@ -27,6 +27,9 @@ const Header = ({ variant = 'default', showAuth = true }) => {
               <Link to="/dashboard" className={styles.navLink}>
                 Dashboard
               </Link>
+              <Link to="/wardrobe" className={styles.navLink}>
+                Wardrobe
+              </Link>
               <Link to="/calendar" className={styles.navLink}>
                 Calendar
               </Link>

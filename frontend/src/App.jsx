@@ -6,7 +6,7 @@ import {
   Auth,
   Onboarding,
   Dashboard,
-  Recommendation,
+  Wardrobe,
   Calendar,
   Profile,
   Settings,
@@ -109,13 +109,16 @@ function App() {
         />
         
         <Route
-          path="/recommendation/:id"
+          path="/wardrobe"
           element={
             <OnboardingGuard>
-              <Recommendation />
+              <Wardrobe />
             </OnboardingGuard>
           }
         />
+
+        {/* Old per-recommendation URLs (the mock detail page was removed) */}
+        <Route path="/recommendation/:id" element={<Navigate to="/wardrobe" replace />} />
         
         <Route
           path="/calendar"

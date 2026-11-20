@@ -68,3 +68,7 @@ htmlcov/
 .env
 .DS_Store
 Thumbs.db
+
+# User-uploaded wardrobe photos
+/uploads/
+clip_install.log
